@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_size"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="#121824"
+    android:gravity="center_horizontal">
+
+    <!-- 標題欄 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🏥 Portable"
+        android:textColor="#38bdf8"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginTop="32dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="智慧語音來電監控系統"
+        android:textColor="#f8fafc"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="32dp" />
+
+    <!-- 狀態卡片 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#1e293b"
+        android:padding="20dp"
+        android:backgroundTint="#1e293b"
+        android:backgroundTintMode="src_over"
+        android:layout_marginBottom="24dp"
+        android:elevation="4dp"
+        android:translationZ="2dp"
+        android:clipToPadding="false"
+        android:clipChildren="false">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="系統監聽狀態"
+            android:textColor="#94a3b8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textAllCaps="true"
+            android:letterSpacing="0.05" />
+
+        <TextView
+            android:id="@+id/txtStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="已關閉 - 點選下方按鈕啟用"
+            android:textColor="#ef4444"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+    <!-- IP 設定輸入框 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Flask 伺服器 IP 位置 設定"
+        android:textColor="#94a3b8"
+        android:textSize="14sp"
+        android:layout_gravity="start"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/editIpAddress"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:background="#1e293b"
+        android:textColor="#f8fafc"
+        android:hint="例如: 192.168.1.100"
+        android:textColorHint="#475569"
+        android:padding="16dp"
+        android:text="192.168.1.100"
+        android:inputType="textUri"
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- 啟動/停止按鈕 -->
+    <Button
+        android:id="@+id/btnToggle"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="啟用來電自動語音派遣"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#ffffff"
+        android:backgroundTint="#0ea5e9"
+        android:layout_marginBottom="24dp" />
+
+    <!-- 權限要求說明與導引 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#1e293b"
+        android:padding="16dp"
+        android:layout_marginTop="auto"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💡 使用說明"
+            android:textColor="#38bdf8"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="1. 請授權「讀取電話狀態」與「麥克風」權限以利自動擴音監聽。\n2. 當有來電並接通後，App 將自動切換至免持擴音並開始背景語音辨識，辨識完成後自動送往 Flask 進程比對名單執行派遣。"
+            android:textColor="#94a3b8"
+            android:textSize="12sp"
+            android:lineSpacingExtra="4dp" />
+    </LinearLayout>
+
+</LinearLayout>

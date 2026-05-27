@@ -2,6 +2,7 @@ import sys
 import os
 import threading
 import time
+import re
 import webbrowser
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
@@ -79,6 +80,75 @@ def serve_sw():
 @app.route('/api/patients')
 def api_patients():
     return jsonify(patients_data)
+
+@app.route('/api/voice_dispatch', methods=['POST'])
+def voice_dispatch():
+    global patients_data
+    data = request.get_json()
+    text = data.get('text', '')
+    if not text:
+        return jsonify({"status": "error", "message": "No text provided"}), 400
+        
+    print(f"[{time.strftime('%H:%M:%S')}] 收到來電通話語音對話: {text}")
+    
+    # 進行對話分析，並 cross-reference 目前爬蟲抓到的病患清單
+    matched_patient = None
+    
+    # 1. 先用病歷號比對 (6-10 位數字)
+    record_numbers = re.findall(r'\d{6,10}', text)
+    if record_numbers:
+        for r_no in record_numbers:
+            for p in patients_data:
+                if p.get('record_no') == r_no:
+                    matched_patient = p
+                    break
+            if matched_patient:
+                break
+                
+    # 2. 如果病歷號沒配對到，用病患姓名比對
+    if not matched_patient:
+        for p in patients_data:
+            p_name = p.get('name')
+            if p_name and p_name in text:
+                matched_patient = p
+                break
+                
+    # 3. 如果找到了配對的病患，自動執行派遣
+    if matched_patient:
+        req_id = 'REQ-VOICE-' + str(int(time.time()))
+        print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，開始自動派遣...")
+        
+        # 記錄為已發送，避免重複出現在待發送清單中
+        patient_key = f"{matched_patient.get('record_no')}|{matched_patient.get('exam')}"
+        sent_patients.add(patient_key)
+        
+        # 從全局待發送名單中剔除，並推播更新發送端畫面
+        patients_data = [p for p in patients_data if f"{p.get('record_no')}|{p.get('exam')}" != patient_key]
+        socketio.emit('patients_updated', patients_data)
+        
+        # 廣播新派遣請求給接收端 (Receiver)
+        socketio.emit('new_request', {'id': req_id, 'patient': matched_patient})
+        current_requests[req_id] = "waiting"
+        
+        # 4. 分析對話中是否有接受/確認/抵達等肯定的意思
+        is_confirm = any(word in text for word in ["接受", "確認", "好的", "收到了", "10分鐘", "十分鐘", "行", "可以", "照"])
+        if is_confirm:
+            current_requests[req_id] = "confirmed"
+            socketio.emit('request_confirmed', {'id': req_id})
+            print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
+            
+        return jsonify({
+            "status": "success", 
+            "matched": True, 
+            "patient": matched_patient,
+            "action": "dispatched_and_confirmed" if is_confirm else "dispatched"
+        })
+        
+    return jsonify({
+        "status": "success", 
+        "matched": false, 
+        "message": "在待發送名單中找不到符合的病患或病歷號"
+    })
 
 @app.route('/api/update_patients', methods=['POST'])
 def update_patients():
