@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>語音派遣控制端 (Android PWA)</title>
+    
+    <!-- PWA Manifest & Meta -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0ea5e9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <!-- Fonts & Socket.IO -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --primary: #0ea5e9;
+            --primary-glow: rgba(14, 165, 233, 0.4);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.3);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.3);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-glow: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            padding-top: env(safe-area-inset-top, 10px);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #38bdf8, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.connected {
+            color: var(--success);
+            background: var(--success-glow);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* 語音控制面板 */
+        .voice-control-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .mic-container {
+            position: relative;
+            width: 90px;
+            height: 90px;
+            margin: 10px 0;
+        }
+
+        .mic-button {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px var(--primary-glow);
+            z-index: 2;
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .mic-button svg {
+            width: 36px;
+            height: 36px;
+            fill: white;
+            transition: transform 0.3s ease;
+        }
+
+        .mic-button.listening {
+            background: linear-gradient(135deg, #10b981, #059669);
+            box-shadow: 0 8px 24px var(--success-glow);
+        }
+
+        .mic-button.listening svg {
+            transform: scale(1.1);
+        }
+
+        /* 脈搏波紋動畫 */
+        .pulse-ring {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: var(--primary);
+            opacity: 0.6;
+            z-index: 1;
+            transform: scale(1);
+        }
+
+        .mic-button.listening ~ .pulse-ring {
+            background-color: var(--success);
+            animation: pulse-wave 1.6s infinite cubic-bezier(0.215, 0.610, 0.355, 1);
+        }
+
+        @keyframes pulse-wave {
+            0% {
+                transform: scale(0.95);
+                opacity: 0.8;
+            }
+            50% {
+                opacity: 0.4;
+            }
+            100% {
+                transform: scale(1.6);
+                opacity: 0;
+            }
+        }
+
+        .voice-instruction {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .voice-log {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            min-height: 20px;
+            font-style: italic;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 16px;
+            border-radius: 12px;
+            width: 100%;
+            word-break: break-all;
+        }
+
+        /* 待發送派遣清單 */
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .request-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-grow: 1;
+        }
+
+        .request-card {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border-glow);
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .request-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 5px;
+            height: 100%;
+            background: var(--primary);
+        }
+
+        .request-card.waiting::before {
+            background: var(--primary);
+        }
+
+        .request-card.confirmed {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+            transform: scale(0.96);
+            opacity: 0.7;
+        }
+
+        .request-card.confirmed::before {
+            background: var(--success);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .exam-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .bed-badge {
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            background: rgba(14, 165, 233, 0.15);
+            color: var(--primary);
+        }
+
+        .bed-badge.er {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            animation: flash-red 2s infinite alternate;
+        }
+
+        @keyframes flash-red {
+            0% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.2); }
+            100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
+        }
+
+        .patient-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        .patient-info span strong {
+            color: var(--text-main);
+        }
+
+        .action-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .btn {
+            flex: 1;
+            border: none;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 1rem;
+            background: var(--panel-bg);
+            border-radius: 20px;
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+        }
+
+        /* 提示指令卡片 */
+        .tip-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 15px;
+            margin-top: auto;
+            margin-bottom: 10px;
+        }
+
+        .tip-card h4 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 6px;
+            letter-spacing: 0.05em;
+        }
+
+        .tip-card p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 頂部列 -->
+    <div class="header">
+        <h1>🏥 Portable 語音派遣</h1>
+        <div id="connectionBadge" class="status-badge">
+            <div class="status-dot"></div>
+            <span id="connectionText">連線中...</span>
+        </div>
+    </div>
+
+    <!-- 語音控制與回饋面版 -->
+    <div class="voice-control-panel">
+        <div class="mic-container">
+            <button id="micBtn" class="mic-button" onclick="toggleSpeech()">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                </svg>
+            </button>
+            <div class="pulse-ring"></div>
+        </div>
+        <div id="voiceStatus" class="voice-instruction">點擊上方麥克風啟用語音指令</div>
+        <div id="voiceTranscription" class="voice-log">聽到的指令會即時顯示在此...</div>
+    </div>
+
+    <!-- 派遣清單 -->
+    <div class="section-title">待處理派遣</div>
+    <div id="incomingRequests" class="request-list">
+        <div class="no-data">目前無待處理的派遣單</div>
+    </div>
+
+    <!-- 指令指南 -->
+    <div class="tip-card">
+        <h4>🎤 支援的語音指令</h4>
+        <p>
+            • 說出「<strong>接受</strong>」、「<strong>收到了</strong>」：直接接受第一筆派遣單。<br>
+            • 說出「<strong>十分鐘到</strong>」、「<strong>10分鐘到</strong>」：確認派單並回報抵達時間。<br>
+            • 說出「<strong>重新整理</strong>」：立刻更新清單。
+        </p>
+    </div>
+
+    <script>
+        const socket = io();
+        let activePatients = [];
+        
+        // 語音識別設定
+        let recognition;
+        let isListening = false;
+        
+        // 系統初始化
+        window.addEventListener('load', () => {
+            initSpeechRecognition();
+            registerServiceWorker();
+        });
+
+        // 註冊 PWA Service Worker
+        function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(() => console.log('PWA Service Worker 註冊成功'))
+                    .catch((err) => console.error('Service Worker 註冊失敗:', err));
+            }
+        }
+
+        // 連線狀態監聽
+        socket.on('connect', () => {
+            const badge = document.getElementById('connectionBadge');
+            badge.className = 'status-badge connected';
+            document.getElementById('connectionText').innerText = '已連線';
+        });
+
+        socket.on('disconnect', () => {
+            const badge = document.getElementById('connectionBadge');
+            badge.className = 'status-badge';
+            document.getElementById('connectionText').innerText = '連線中斷';
+        });
+
+        // 監聽後端推播新名單
+        socket.on('patients_updated', (data) => {
+            const container = document.getElementById('incomingRequests');
+            
+            // 判斷是否有「新增」的病患，如果有，就播放語音通知
+            if (data.length > activePatients.length) {
+                // 找出哪些是原本沒有的病患
+                const oldKeys = activePatients.map(p => p.record_no);
+                const newPatients = data.filter(p => !oldKeys.includes(p.record_no));
+                
+                newPatients.forEach(p => {
+                    speakNotification(`收到新派遣，病房床號：${p.bed || '未知'}，病患：${p.name}`);
+                });
+            }
+            
+            activePatients = data;
+            renderPatients();
+        });
+
+        // 當發送端正式發送請求時
+        socket.on('new_request', (data) => {
+            // 這個請求會更新 activePatients (透過 app.py 廣播 update)
+            fetchPatients();
+        });
+
+        function fetchPatients() {
+            fetch('/api/patients')
+                .then(res => res.json())
+                .then(data => {
+                    activePatients = data;
+                    renderPatients();
+                });
+        }
+        
+        // 首次查詢
+        fetchPatients();
+
+        // 渲染病患清單
+        function renderPatients() {
+            const container = document.getElementById('incomingRequests');
+            container.innerHTML = '';
+
+            if (activePatients.length === 0) {
+                container.innerHTML = '<div class="no-data">目前無待處理的派遣單</div>';
+                return;
+            }
+
+            activePatients.forEach((p, index) => {
+                const card = document.createElement('div');
+                card.className = 'request-card waiting';
+                card.id = `CARD-${p.record_no}`;
+                
+                const isER = p.bed === '急診';
+                const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
+                
+                card.innerHTML = `
+                    <div class="card-header">
+                        <div class="exam-title">${p.exam}</div>
+                        <div class="${bedBadgeClass}">${p.bed || '無床號'}</div>
+                    </div>
+                    <div class="patient-info">
+                        <span>姓名: <strong>${p.name}</strong></span>
+                        <span>病歷號: <strong>${p.record_no}</strong></span>
+                    </div>
+                    <div class="action-container">
+                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}', ${index})">
+                            ✔️ 接受
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 手動確認
+        function manualConfirm(recordNo, index) {
+            // 新增一個動態的 REQ ID 以對應 socketio 流程
+            const reqId = 'REQ-MOB-' + Date.now();
+            const p = activePatients[index];
+            
+            socket.emit('send_request', { id: reqId, patient: p });
+            setTimeout(() => {
+                socket.emit('confirm_request', { id: reqId });
+            }, 200);
+
+            // 更新 UI
+            const card = document.getElementById(`CARD-${recordNo}`);
+            if (card) {
+                card.className = 'request-card confirmed';
+                card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
+                
+                speakNotification(`已接受${p.name}的派遣`);
+                
+                setTimeout(() => {
+                    card.remove();
+                    fetchPatients();
+                }, 3000);
+            }
+        }
+
+        // 語音播報核心 (TTS)
+        function speakNotification(text) {
+            if ('speechSynthesis' in window) {
+                // 先取消目前正在播放的語音，避免重疊
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 語音辨識核心 (STT)
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                document.getElementById('voiceStatus').innerText = '您的瀏覽器不支援語音辨識';
+                document.getElementById('micBtn').disabled = true;
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; // 連續辨識
+            recognition.interimResults = false; // 只取最終結果，提高精準度
+            recognition.lang = 'zh-TW'; // 設定繁體中文語音
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('micBtn').classList.add('listening');
+                document.getElementById('voiceStatus').innerText = '🎙️ 語音聆聽中...請說出指令';
+                document.getElementById('voiceStatus').style.color = 'var(--success)';
+            };
+
+            recognition.onerror = (event) => {
+                console.error('語音辨識錯誤:', event.error);
+                if (event.error === 'not-allowed') {
+                    document.getElementById('voiceStatus').innerText = '麥克風授權被拒絕，請啟用權限';
+                    document.getElementById('voiceStatus').style.color = 'var(--danger)';
+                    stopSpeech();
+                }
+            };
+
+            recognition.onend = () => {
+                // 如果是使用者主動關閉，就不重啟；如果是系統自動超時中斷，就自動重啟
+                if (isListening) {
+                    console.log('語音監聽超時自動重啟...');
+                    recognition.start();
+                } else {
+                    document.getElementById('micBtn').classList.remove('listening');
+                    document.getElementById('voiceStatus').innerText = '點擊麥克風啟用語音指令';
+                    document.getElementById('voiceStatus').style.color = 'var(--text-main)';
+                }
+            };
+
+            recognition.onresult = (event) => {
+                const resultIndex = event.resultIndex;
+                const transcript = event.results[resultIndex][0].transcript.trim().toLowerCase();
+                
+                document.getElementById('voiceTranscription').innerText = `「${transcript}」`;
+                analyzeVoiceCommand(transcript);
+            };
+        }
+
+        function toggleSpeech() {
+            if (isListening) {
+                stopSpeech();
+            } else {
+                startSpeech();
+            }
+        }
+
+        function startSpeech() {
+            if (recognition) {
+                isListening = true;
+                recognition.start();
+                speakNotification("語音控制已啟用");
+            }
+        }
+
+        function stopSpeech() {
+            if (recognition) {
+                isListening = false;
+                recognition.stop();
+                speakNotification("語音控制已關閉");
+            }
+        }
+
+        // 語音指令邏輯分析
+        function analyzeVoiceCommand(text) {
+            console.log("語音指令分析中:", text);
+            
+            // 指令一：接受 / 確認 / 收到了
+            if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
+                if (activePatients.length > 0) {
+                    // 接受第一筆 (最上面)
+                    manualConfirm(activePatients[0].record_no, 0);
+                } else {
+                    speakNotification("目前沒有待處理的派遣單");
+                }
+                return;
+            }
+
+            // 指令二：十分鐘到 / 10分鐘到
+            if (text.includes("十分鐘") || text.includes("10分鐘") || text.includes("10分")) {
+                if (activePatients.length > 0) {
+                    const p = activePatients[0];
+                    const reqId = 'REQ-MOB-' + Date.now();
+                    
+                    // 發送並確認
+                    socket.emit('send_request', { id: reqId, patient: p });
+                    setTimeout(() => {
+                        socket.emit('confirm_request', { id: reqId });
+                    }, 200);
+
+                    // 視覺回饋
+                    const card = document.getElementById(`CARD-${p.record_no}`);
+                    if (card) {
+                        card.className = 'request-card confirmed';
+                        card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已回報 10 分鐘後抵達</div>';
+                        
+                        speakNotification(`好的，已回報十分鐘後抵達，並接受${p.name}的單`);
+                        
+                        setTimeout(() => {
+                            card.remove();
+                            fetchPatients();
+                        }, 3000);
+                    }
+                } else {
+                    speakNotification("目前沒有待處理的派遣單");
+                }
+                return;
+            }
+
+            // 指令三：重新整理 / 刷新 / 重整
+            if (text.includes("重新整理") || text.includes("刷新") || text.includes("重整") || text.includes("更新")) {
+                fetchPatients();
+                speakNotification("已為您重新整理清單");
+                return;
+            }
+            
+            // 指令四：特定病患名字 (姓名模糊搜尋)
+            for (let i = 0; i < activePatients.length; i++) {
+                const p = activePatients[i];
+                if (text.includes(p.name)) {
+                    manualConfirm(p.record_no, i);
+                    return;
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -61,6 +61,21 @@ def sender():
 def receiver():
     return render_template('receiver.html')
 
+@app.route('/mobile')
+def mobile_receiver():
+    return render_template('mobile_receiver.html')
+
+@app.route('/manifest.json')
+def serve_manifest():
+    return app.send_static_file('manifest.json')
+
+@app.route('/sw.js')
+def serve_sw():
+    response = app.make_response(app.send_static_file('sw.js'))
+    response.headers['Content-Type'] = 'application/javascript'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
+
 @app.route('/api/patients')
 def api_patients():
     return jsonify(patients_data)
