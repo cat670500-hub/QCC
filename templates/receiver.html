@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>接收端 - Portable 收發訊息</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>接收端</h1>
+        <div id="incomingRequests" class="status"></div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        socket.on('new_request', (data) => {
+            const p = data.patient;
+            if (p) {
+                const checkKey = p.record_no + '-' + p.exam;
+                if (document.querySelector(`.request-box[data-key="${checkKey}"]`)) {
+                    return; // 已經存在這筆病患的請求，忽略重複
+                }
+            }
+
+            const reqDiv = document.createElement('div');
+            reqDiv.className = 'request-box waiting';
+            reqDiv.id = data.id;
+            if (p) reqDiv.setAttribute('data-key', p.record_no + '-' + p.exam);
+
+            const textSpan = document.createElement('span');
+            let bedDisplay = '';
+            if (p) {
+                bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+            }
+            const patientText = p ? `<br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}` : '';
+            textSpan.innerHTML = `<strong>檢查部位: ${p ? p.exam : data.id}</strong>${patientText}`;
+            reqDiv.appendChild(textSpan);
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.innerText = '接受';
+            confirmBtn.style.padding = '8px 16px';
+            confirmBtn.style.fontSize = '0.9rem';
+            confirmBtn.onclick = () => {
+                socket.emit('confirm_request', { id: data.id });
+                reqDiv.className = 'request-box confirmed';
+                confirmBtn.remove();
+                // 變成淡藍色框(已確認)後，1分鐘(60秒)後清除
+                setTimeout(() => {
+                    if (reqDiv.parentNode) reqDiv.remove();
+                }, 60000);
+            };
+            reqDiv.appendChild(confirmBtn);
+
+            document.getElementById('incomingRequests').appendChild(reqDiv);
+
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>發送端 - Portable 收發訊息</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1>發送端</h1>
+        <div class="glass-panel">
+            <h2>待發送清單</h2>
+            <button id="refreshBtn" onclick="manualRefresh()" style="margin-bottom: 15px; background: #007BFF; border: none; border-radius: 8px; padding: 10px 16px; color: white; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🔄 重新查詢</button>
+            <div id="patientListDiv" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto; padding-right: 10px;">
+                {% for p in patients %}
+                <div class="request-box" style="margin: 0; border-left: 5px solid var(--primary);">
+                    <span>
+                        <strong>檢查部位: {{ p.exam }}</strong><br>
+                        病患: {{ p.name }} ({{ p.record_no }})<br>
+                        床號: {% if p.bed == '急診' %}<span style="color: red; font-weight: bold;">{{ p.bed }}</span>{% else %}{{ p.bed }}{% endif %}
+                    </span>
+                    <button class="sendBtn" style="padding: 8px 16px; font-size: 0.9rem;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" onclick="sendRequest(this)">發送</button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div id="requestsList" class="status"></div>
+        <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 20px 0;">
+        <h3 style="font-size: 1.1rem; color: #444; margin-bottom: 10px;">確認紀錄清單</h3>
+        <ul id="historyList"
+            style="text-align: left; font-size: 0.9rem; color: #555; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0;">
+        </ul>
+    </div>
+
+    <script>
+        const socket = io();
+        let requestCount = 0;
+
+        function sendRequest(btn) {
+            requestCount++;
+            const patient = {
+                name: btn.getAttribute('data-name'),
+                record_no: btn.getAttribute('data-record'),
+                bed: btn.getAttribute('data-bed'),
+                exam: btn.getAttribute('data-exam')
+            };
+            const reqId = 'REQ-' + requestCount;
+
+            // Add to UI as waiting
+            const reqDiv = document.createElement('div');
+            reqDiv.className = 'request-box waiting';
+            reqDiv.id = reqId;
+            reqDiv.setAttribute('data-name', patient.name);
+            reqDiv.setAttribute('data-bed', patient.bed);
+            reqDiv.setAttribute('data-record', patient.record_no);
+
+            const textSpan = document.createElement('span');
+            const bedDisplay = patient.bed === '急診' ? `<span style="color: red; font-weight: bold;">${patient.bed}</span>` : patient.bed;
+            textSpan.innerHTML = `<strong>[等待中] 發送給接收端</strong><br><strong>檢查部位: ${patient.exam}</strong><br>病患: ${patient.name} (${patient.record_no})<br>床號: ${bedDisplay}`;
+            reqDiv.appendChild(textSpan);
+            document.getElementById('requestsList').appendChild(reqDiv);
+
+            // Emit to server
+            socket.emit('send_request', { id: reqId, patient: patient });
+            
+            // 發送後隱藏按鈕，避免重複發送
+            const parentBox = btn.closest('.request-box');
+            if (parentBox) {
+                parentBox.remove();
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+
+        socket.on('request_confirmed', (data) => {
+            const reqDiv = document.getElementById(data.id);
+            let displayNameAndBed = `請求 ${data.id}`;
+            
+            if (reqDiv) {
+                const pName = reqDiv.getAttribute('data-name') || '';
+                const pBed = reqDiv.getAttribute('data-bed') || '';
+                const pRecord = reqDiv.getAttribute('data-record') || '';
+                if (pName || pBed || pRecord) {
+                    displayNameAndBed = `${pName} (${pRecord}) - ${pBed}`;
+                }
+                reqDiv.className = 'request-box confirmed';
+                reqDiv.querySelector('span').innerText = `${displayNameAndBed} - 接受！`;
+                
+                // 變成淡藍色框(已確認)後，30秒後清除
+                setTimeout(() => {
+                    if (reqDiv.parentNode) reqDiv.remove();
+                }, 30000);
+            }
+
+            // 記錄到清單
+            const historyList = document.getElementById('historyList');
+            const li = document.createElement('li');
+            const timeString = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+            li.innerText = `[${timeString}] ${displayNameAndBed} 回覆：接受`;
+            li.style.marginBottom = '5px';
+            historyList.appendChild(li);
+            // 滾動到最底部
+            historyList.scrollTop = historyList.scrollHeight;
+        });
+
+        // 監聽來自伺服器的名單更新 (當爬蟲抓到新資料時即時觸發)
+        socket.on('patients_updated', (data) => {
+            const listDiv = document.getElementById('patientListDiv');
+            listDiv.innerHTML = ''; // 清除舊清單
+            data.forEach(p => {
+                const reqDiv = document.createElement('div');
+                reqDiv.className = 'request-box';
+                reqDiv.style.margin = '0';
+                reqDiv.style.borderLeft = '5px solid var(--primary)';
+                
+                const textSpan = document.createElement('span');
+                const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+                textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}`;
+                reqDiv.appendChild(textSpan);
+
+                const btn = document.createElement('button');
+                btn.className = 'sendBtn';
+                btn.style.padding = '8px 16px';
+                btn.style.fontSize = '0.9rem';
+                btn.setAttribute('data-name', p.name);
+                btn.setAttribute('data-record', p.record_no);
+                btn.setAttribute('data-bed', p.bed);
+                btn.setAttribute('data-exam', p.exam);
+                btn.innerText = `發送`;
+                btn.onclick = function() { sendRequest(this); };
+                reqDiv.appendChild(btn);
+
+                listDiv.appendChild(reqDiv);
+            });
+            console.log("已接收最新爬蟲名單，畫面已同步更新！");
+        });
+
+        // 向伺服器要求一次最新名單
+        function fetchPatients() {
+            fetch('/api/patients')
+                .then(res => res.json())
+                .then(data => {
+                    const listDiv = document.getElementById('patientListDiv');
+                    listDiv.innerHTML = ''; // 清除舊清單
+                    data.forEach(p => {
+                        const reqDiv = document.createElement('div');
+                        reqDiv.className = 'request-box';
+                        reqDiv.style.margin = '0';
+                        reqDiv.style.borderLeft = '5px solid var(--primary)';
+                        
+                        const textSpan = document.createElement('span');
+                        const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+                        textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}`;
+                        reqDiv.appendChild(textSpan);
+
+                        const btn = document.createElement('button');
+                        btn.className = 'sendBtn';
+                        btn.style.padding = '8px 16px';
+                        btn.style.fontSize = '0.9rem';
+                        btn.setAttribute('data-name', p.name);
+                        btn.setAttribute('data-record', p.record_no);
+                        btn.setAttribute('data-bed', p.bed);
+                        btn.setAttribute('data-exam', p.exam);
+                        btn.innerText = `發送`;
+                        btn.onclick = function() { sendRequest(this); };
+                        reqDiv.appendChild(btn);
+
+                        listDiv.appendChild(reqDiv);
+                    });
+                })
+                .catch(err => console.error("更新失敗:", err));
+        }
+
+        function manualRefresh() {
+            fetchPatients();
+            const btn = document.getElementById('refreshBtn');
+            if (btn) {
+                btn.innerText = '✅ 已手動更新！';
+                btn.disabled = true;
+                setTimeout(() => {
+                    btn.innerText = '🔄 重新查詢';
+                    btn.disabled = false;
+                }, 1500);
+            }
+        }
+    </script>
+</body>
+
+</html>
