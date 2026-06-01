@@ -8,11 +8,8 @@ print("===================================================")
 print("\n[1/2] 檢查打包工具 (PyInstaller)...")
 subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "pyinstaller"])
 
-print("\n[2/2] 開始打包主程式與 Chromium 瀏覽器...")
-print("(這會把 Playwright 瀏覽器一起打包進去，檔案會有點大，請耐心等候)")
-
-local_app_data = os.environ.get('LOCALAPPDATA')
-playwright_dir = os.path.join(local_app_data, 'ms-playwright')
+print("\n[2/2] 開始打包主程式與 HAR 檔案...")
+print("(使用 HAR 檔案解析，打包速度極快且檔案體積小！)")
 
 command = [
     sys.executable, "-m", "PyInstaller",
@@ -21,7 +18,7 @@ command = [
     "--name", "Portable派遣系統",
     "--add-data", "templates;templates",
     "--add-data", "static;static",
-    "--add-data", f"{playwright_dir};ms-playwright",
+    "--add-data", "tprisweb.shh.org.tw.har;.",
     "--hidden-import", "engineio.async_drivers.threading",
     "app.py"
 ]
@@ -37,3 +34,4 @@ except Exception as e:
     print(f"\n打包過程中發生錯誤: {e}")
 
 input("\n按 Enter 鍵結束...")
+

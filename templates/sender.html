@@ -18,15 +18,25 @@
         <div class="glass-panel">
             <h2>待發送清單</h2>
             <button id="refreshBtn" onclick="manualRefresh()" style="margin-bottom: 15px; background: #007BFF; border: none; border-radius: 8px; padding: 10px 16px; color: white; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🔄 重新查詢</button>
-            <div id="patientListDiv" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto; padding-right: 10px;">
+            <div id="patientListDiv" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 350px; overflow-y: auto; padding-right: 10px;">
                 {% for p in patients %}
-                <div class="request-box" style="margin: 0; border-left: 5px solid var(--primary);">
-                    <span>
-                        <strong>檢查部位: {{ p.exam }}</strong><br>
-                        病患: {{ p.name }} ({{ p.record_no }})<br>
-                        床號: {% if p.bed == '急診' %}<span style="color: red; font-weight: bold;">{{ p.bed }}</span>{% else %}{{ p.bed }}{% endif %}
-                    </span>
-                    <button class="sendBtn" style="padding: 8px 16px; font-size: 0.9rem;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" onclick="sendRequest(this)">發送</button>
+                <div class="request-box" style="margin: 0; border-left: 5px solid {% if p.checked_in %}#10b981{% else %}var(--primary){% endif %}; flex-direction: column; align-items: flex-start; transition: border-left-color 0.3s;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                        <span>
+                            <strong>檢查部位: {{ p.exam }}</strong><br>
+                            病患: {{ p.name }} ({{ p.record_no }})<br>
+                            床號: {% if p.bed == '急診' %}<span style="color: red; font-weight: bold;">{{ p.bed }}</span>{% else %}{{ p.bed }}{% endif %}
+                        </span>
+                        {% if p.checked_in %}
+                            <span class="checked-in-badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">✅ 已報到</span>
+                        {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 10px; width: 100%;">
+                        {% if not p.checked_in %}
+                            <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" onclick="checkInPatient(this)">報到</button>
+                        {% endif %}
+                        <button class="sendBtn" style="padding: 6px 12px; font-size: 0.85rem; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" onclick="sendRequest(this)">發送</button>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -110,36 +120,112 @@
             historyList.scrollTop = historyList.scrollHeight;
         });
 
-        // 監聽來自伺服器的名單更新 (當爬蟲抓到新資料時即時觸發)
+        // 渲染單個病患卡片的 DOM 結構
+        function renderPatientCard(p) {
+            const reqDiv = document.createElement('div');
+            reqDiv.className = 'request-box';
+            reqDiv.style.margin = '0';
+            reqDiv.style.flexDirection = 'column';
+            reqDiv.style.alignItems = 'flex-start';
+            reqDiv.style.borderLeft = p.checked_in ? '5px solid #10b981' : '5px solid var(--primary)';
+            reqDiv.style.transition = 'border-left-color 0.3s';
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.style.display = 'flex';
+            headerDiv.style.justifyContent = 'space-between';
+            headerDiv.style.alignItems = 'flex-start';
+            headerDiv.style.width = '100%';
+            
+            const textSpan = document.createElement('span');
+            const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+            textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}`;
+            headerDiv.appendChild(textSpan);
+            
+            if (p.checked_in) {
+                const badge = document.createElement('span');
+                badge.className = 'checked-in-badge';
+                badge.style.background = 'rgba(16, 185, 129, 0.15)';
+                badge.style.color = '#10b981';
+                badge.style.padding = '4px 8px';
+                badge.style.borderRadius = '6px';
+                badge.style.fontSize = '0.8rem';
+                badge.style.fontWeight = 'bold';
+                badge.style.display = 'flex';
+                badge.style.alignItems = 'center';
+                badge.style.gap = '4px';
+                badge.innerText = '✅ 已報到';
+                headerDiv.appendChild(badge);
+            }
+            reqDiv.appendChild(headerDiv);
+            
+            const btnGroup = document.createElement('div');
+            btnGroup.style.display = 'flex';
+            btnGroup.style.gap = '8px';
+            btnGroup.style.marginTop = '10px';
+            btnGroup.style.width = '100%';
+            
+            if (!p.checked_in) {
+                const checkInBtn = document.createElement('button');
+                checkInBtn.className = 'checkInBtn';
+                checkInBtn.style.padding = '6px 12px';
+                checkInBtn.style.fontSize = '0.85rem';
+                checkInBtn.style.background = '#10b981';
+                checkInBtn.style.color = 'white';
+                checkInBtn.style.border = 'none';
+                checkInBtn.style.borderRadius = '6px';
+                checkInBtn.style.cursor = 'pointer';
+                checkInBtn.style.fontWeight = 'bold';
+                checkInBtn.style.transition = 'all 0.2s';
+                checkInBtn.setAttribute('data-record', p.record_no);
+                checkInBtn.setAttribute('data-exam', p.exam);
+                checkInBtn.innerText = '報到';
+                checkInBtn.onclick = function() { checkInPatient(this); };
+                btnGroup.appendChild(checkInBtn);
+            }
+            
+            const sendBtn = document.createElement('button');
+            sendBtn.className = 'sendBtn';
+            sendBtn.style.padding = '6px 12px';
+            sendBtn.style.fontSize = '0.85rem';
+            sendBtn.style.background = 'var(--primary)';
+            sendBtn.style.color = 'white';
+            sendBtn.style.border = 'none';
+            sendBtn.style.borderRadius = '6px';
+            sendBtn.style.cursor = 'pointer';
+            sendBtn.style.fontWeight = 'bold';
+            sendBtn.style.transition = 'all 0.2s';
+            sendBtn.setAttribute('data-name', p.name);
+            sendBtn.setAttribute('data-record', p.record_no);
+            sendBtn.setAttribute('data-bed', p.bed);
+            sendBtn.setAttribute('data-exam', p.exam);
+            sendBtn.innerText = '發送';
+            sendBtn.onclick = function() { sendRequest(this); };
+            btnGroup.appendChild(sendBtn);
+            
+            reqDiv.appendChild(btnGroup);
+            return reqDiv;
+        }
+
+        // 手動報到觸發
+        function checkInPatient(btn) {
+            const recordNo = btn.getAttribute('data-record');
+            const exam = btn.getAttribute('data-exam');
+            
+            btn.innerText = '⏳ 處理中...';
+            btn.disabled = true;
+            
+            // 透過 Socket 傳遞報到事件
+            socket.emit('check_in_patient', { record_no: recordNo, exam: exam });
+        }
+
+        // 監聽來自伺服器的名單更新 (當爬蟲抓到新資料或有人點擊報到時觸發)
         socket.on('patients_updated', (data) => {
             const listDiv = document.getElementById('patientListDiv');
             listDiv.innerHTML = ''; // 清除舊清單
             data.forEach(p => {
-                const reqDiv = document.createElement('div');
-                reqDiv.className = 'request-box';
-                reqDiv.style.margin = '0';
-                reqDiv.style.borderLeft = '5px solid var(--primary)';
-                
-                const textSpan = document.createElement('span');
-                const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
-                textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}`;
-                reqDiv.appendChild(textSpan);
-
-                const btn = document.createElement('button');
-                btn.className = 'sendBtn';
-                btn.style.padding = '8px 16px';
-                btn.style.fontSize = '0.9rem';
-                btn.setAttribute('data-name', p.name);
-                btn.setAttribute('data-record', p.record_no);
-                btn.setAttribute('data-bed', p.bed);
-                btn.setAttribute('data-exam', p.exam);
-                btn.innerText = `發送`;
-                btn.onclick = function() { sendRequest(this); };
-                reqDiv.appendChild(btn);
-
-                listDiv.appendChild(reqDiv);
+                listDiv.appendChild(renderPatientCard(p));
             });
-            console.log("已接收最新爬蟲名單，畫面已同步更新！");
+            console.log("已接收最新病患名單，畫面已同步更新！");
         });
 
         // 向伺服器要求一次最新名單
@@ -150,29 +236,7 @@
                     const listDiv = document.getElementById('patientListDiv');
                     listDiv.innerHTML = ''; // 清除舊清單
                     data.forEach(p => {
-                        const reqDiv = document.createElement('div');
-                        reqDiv.className = 'request-box';
-                        reqDiv.style.margin = '0';
-                        reqDiv.style.borderLeft = '5px solid var(--primary)';
-                        
-                        const textSpan = document.createElement('span');
-                        const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
-                        textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}`;
-                        reqDiv.appendChild(textSpan);
-
-                        const btn = document.createElement('button');
-                        btn.className = 'sendBtn';
-                        btn.style.padding = '8px 16px';
-                        btn.style.fontSize = '0.9rem';
-                        btn.setAttribute('data-name', p.name);
-                        btn.setAttribute('data-record', p.record_no);
-                        btn.setAttribute('data-bed', p.bed);
-                        btn.setAttribute('data-exam', p.exam);
-                        btn.innerText = `發送`;
-                        btn.onclick = function() { sendRequest(this); };
-                        reqDiv.appendChild(btn);
-
-                        listDiv.appendChild(reqDiv);
+                        listDiv.appendChild(renderPatientCard(p));
                     });
                 })
                 .catch(err => console.error("更新失敗:", err));

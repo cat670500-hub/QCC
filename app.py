@@ -7,17 +7,45 @@ import webbrowser
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 
+def load_dotenv():
+    """尋找並載入 .env 設定檔中的金鑰資訊"""
+    possible_paths = []
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        possible_paths.append(os.path.join(exe_dir, '.env'))
+    
+    possible_paths.append(os.path.join(os.getcwd(), '.env'))
+    possible_paths.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            k, v = line.split('=', 1)
+                            os.environ[k.strip()] = v.strip()
+                print(f"[系統] 已成功載入金鑰設定檔: {path}")
+                break
+            except Exception as e:
+                print(f"[警告] 讀取設定檔 {path} 時發生錯誤: {e}")
+
+# 載入金鑰設定
+load_dotenv()
+
 # 判斷是否為 PyInstaller 打包後的執行檔
 if getattr(sys, 'frozen', False):
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_folder = os.path.join(sys._MEIPASS, 'static')
     app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
-    # 讓 Playwright 讀取打包進來的瀏覽器
+    # 讓 Playwright 讀取打包進來的瀏覽器 (備用)
     os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.path.join(sys._MEIPASS, 'ms-playwright')
 else:
     app = Flask(__name__)
 
-app.config['SECRET_KEY'] = 'hospital-secret!'
+app.config['SECRET_KEY'] = os.environ.get('TPRIS_PASSWORD', 'hospital-secret!')
+
 # 明確指定 async_mode='threading' 避免 PyInstaller 打包後找不到非同步驅動
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -25,6 +53,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 current_requests = {}
 # 存放已經發送過的病患，避免重複出現 (使用 record_no + exam 作為唯一鍵)
 sent_patients = set()
+# 存放已經手動報到過的病患
+checked_in_patients = set()
 
 @app.route('/')
 def index():
@@ -160,6 +190,8 @@ def update_patients():
         for p in data:
             patient_key = f"{p.get('record_no')}|{p.get('exam')}"
             if patient_key not in sent_patients:
+                # 標記病患是否已報到
+                p['checked_in'] = (patient_key in checked_in_patients)
                 filtered_data.append(p)
                 
         patients_data = filtered_data
@@ -198,6 +230,26 @@ def handle_confirm(data):
         print(f"請求已確認: {request_id}")
         # 通知發送端
         emit('request_confirmed', {'id': request_id}, broadcast=True)
+
+# 手動報到請求
+@socketio.on('check_in_patient')
+def handle_check_in(data):
+    global patients_data
+    record_no = data.get('record_no')
+    exam = data.get('exam')
+    patient_key = f"{record_no}|{exam}"
+    
+    checked_in_patients.add(patient_key)
+    
+    # 在記憶體中更新目前病患狀態
+    for p in patients_data:
+        if p.get('record_no') == record_no and p.get('exam') == exam:
+            p['checked_in'] = True
+            break
+            
+    print(f"病患已手動報到: {record_no} (項目: {exam})")
+    # 廣播給所有發送端更新畫面
+    socketio.emit('patients_updated', patients_data)
 
 if __name__ == '__main__':
     # 確保在 Flask debug 模式的 reloader 下不會重複啟動
