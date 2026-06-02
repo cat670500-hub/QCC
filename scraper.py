@@ -81,7 +81,7 @@ def fetch_live_patients(token):
     # 動態產生今日的 ISO 8601 時間參數
     today_str = datetime.date.today().isoformat()
     params = {
-        "$top": 1000, # 擴大抓取範圍，確保撈取今日所有醫令
+        "$top": 3000, # 擴大抓取範圍至 3000 筆，確保撈取今日清晨開始的所有醫令 (解決忙碌醫院清晨醫令被擠出前 1000 筆的問題)
         "$skip": 0,
         "$orderby": "OrderDate desc",
         "orderDateStart": f"{today_str}T00:00:00+08:00",
