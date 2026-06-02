@@ -193,45 +193,89 @@ def voice_dispatch():
                 matched_patient = p
                 break
                 
-    # 3. 如果找到了配對的病患，自動執行派遣
+    # 3. 如果找到了配對的病患，依據語音內容執行對應動作
     if matched_patient:
-        req_id = 'REQ-VOICE-' + str(int(time.time()))
-        print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，開始自動派遣...")
-        
-        # 記錄為已發送，避免重複出現在待發送清單中
         patient_key = f"{matched_patient.get('record_no')}|{matched_patient.get('exam')}"
-        sent_patients.add(patient_key)
         
-        # 不要從全域剔除，改為標記已分派，並推播更新發送端畫面
-        matched_patient['dispatched'] = True
-        for p in patients_data:
-            if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
-                p['dispatched'] = True
-                break
-        patients_data = sort_patients(patients_data)
-        socketio.emit('patients_updated', patients_data)
-        
-        # 廣播新派遣請求給接收端 (Receiver)
-        socketio.emit('new_request', {'id': req_id, 'patient': matched_patient})
-        current_requests[req_id] = "waiting"
-        
-        # 4. 分析對話中是否有接受/確認/抵達等肯定的意思
-        is_confirm = any(word in text for word in ["接受", "確認", "好的", "收到了", "10分鐘", "十分鐘", "行", "可以", "照"])
-        if is_confirm:
-            current_requests[req_id] = "confirmed"
-            socketio.emit('request_confirmed', {'id': req_id})
-            print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
+        # 情況 A：語音要求取消報到
+        if "取消報到" in text:
+            print(f"=> [語音自動取消報到] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，進行取消報到變更...")
+            if patient_key in checked_in_patients:
+                checked_in_patients.remove(patient_key)
             
-        return jsonify({
-            "status": "success", 
-            "matched": True, 
-            "patient": matched_patient,
-            "action": "dispatched_and_confirmed" if is_confirm else "dispatched"
-        })
+            for p in patients_data:
+                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                    p['checked_in'] = False
+                    break
+            
+            patients_data = sort_patients(patients_data)
+            socketio.emit('patients_updated', patients_data)
+            
+            return jsonify({
+                "status": "success", 
+                "matched": True, 
+                "patient": matched_patient,
+                "action": "cancel_check_in"
+            })
+            
+        # 情況 B：語音要求報到
+        elif "報到" in text:
+            print(f"=> [語音自動報到] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，進行報到狀態變更...")
+            checked_in_patients.add(patient_key)
+            
+            for p in patients_data:
+                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                    p['checked_in'] = True
+                    break
+            
+            patients_data = sort_patients(patients_data)
+            socketio.emit('patients_updated', patients_data)
+            
+            return jsonify({
+                "status": "success", 
+                "matched": True, 
+                "patient": matched_patient,
+                "action": "check_in"
+            })
+            
+        # 情況 C：預設為執行自動派遣
+        else:
+            req_id = 'REQ-VOICE-' + str(int(time.time()))
+            print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，開始自動派遣...")
+            
+            # 記錄為已發送，避免重複出現在待發送清單中
+            sent_patients.add(patient_key)
+            
+            # 不要從全域剔除，改為標記已分派，並推播更新發送端畫面
+            matched_patient['dispatched'] = True
+            for p in patients_data:
+                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                    p['dispatched'] = True
+                    break
+            patients_data = sort_patients(patients_data)
+            socketio.emit('patients_updated', patients_data)
+            
+            # 廣播新派遣請求給接收端 (Receiver)
+            socketio.emit('new_request', {'id': req_id, 'patient': matched_patient})
+            current_requests[req_id] = "waiting"
+            
+            # 4. 分析對話中是否有接受/確認/抵達等肯定的意思
+            is_confirm = any(word in text for word in ["接受", "確認", "好的", "收到了", "10分鐘", "十分鐘", "行", "可以", "照"])
+            if is_confirm:
+                current_requests[req_id] = "confirmed"
+                socketio.emit('request_confirmed', {'id': req_id})
+                print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
+                
+            return jsonify({
+                "status": "success", 
+                "matched": True, 
+                "patient": matched_patient,
+                "action": "dispatched_and_confirmed" if is_confirm else "dispatched"
+            })
         
     return jsonify({
         "status": "success", 
-        "matched": false, 
+        "matched": False, 
         "message": "在待發送名單中找不到符合的病患或病歷號"
     })
 
