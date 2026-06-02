@@ -51,8 +51,8 @@
                 <div class="request-box {{ status_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
                         <span>
-                            <strong>檢查部位: {{ p.exam }}</strong><br>
-                            病患: {{ p.name }} ({{ p.record_no }})<br>
+                            <strong>病患: {{ p.name }} ({{ p.record_no }})</strong><br>
+                            檢查部位: {{ p.exam }}<br>
                             床號: {% if p.bed == '急診' %}<span style="color: red; font-weight: bold;">{{ p.bed }}</span>{% else %}{{ p.bed }}{% endif %}<br>
                             <span style="font-size: 0.85rem; color: #64748b;">來源: {{ p.source }} | 申請單號: {{ app_no }}</span>
                         </span>
@@ -191,7 +191,7 @@
             // 申請單號去尾 5 碼邏輯
             const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
             
-            textSpan.innerHTML = `<strong>檢查部位: ${p.exam}</strong><br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>`;
+            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>`;
             headerDiv.appendChild(textSpan);
             
             // 狀態徽章
