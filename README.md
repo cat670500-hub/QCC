@@ -78,7 +78,7 @@ graph TD
 ## 📁 專案檔案結構
 
 * `app.py`：Flask & SocketIO 後端主程式，管理 WebSocket 狀態、處理 API，並在啟動時自動於背景開啟**單個**背景爬蟲執行緒與開啟主選單網頁。
-* `scraper.py`：直連 API 核心程式，負責使用 HTTP POST/GET 對醫院 API 進行資料同步與篩選，每 10 秒即時同步一次。
+* `scraper.py`：直連 API 核心程式，負責對醫院 API 進行資料同步與篩選（單日上限放寬至 3000 筆以保證清晨開單不漏單），每 10 秒即時同步一次。
 * `run.py`：系統同步啟動器，負責以安全且單一視窗的方式調用 `app.py`。
 * `static/`：存放靜態樣式檔與資源，包含 UI 的 Vanilla CSS 及視覺設計。
 * `templates/`：前端網頁範本（包含 `sender.html`、`receiver.html`、`mobile_receiver.html` 與 `login.html`）。
