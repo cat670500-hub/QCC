@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統驗證 - Portable 派遣系統</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-body">
+    <div class="login-card">
+        <h2>🏥 Portable 派遣系統</h2>
+        <p>請輸入本機系統管理密碼以開啟主控制台</p>
+        
+        <form method="POST" action="/login">
+            <div class="login-input-group">
+                <label for="password">系統安全金鑰 (密碼)</label>
+                <input type="password" id="password" name="password" class="login-input" placeholder="請輸入設定的系統密碼..." required autofocus autocomplete="current-password">
+            </div>
+            
+            <button type="submit" class="login-btn">確認並開啟系統</button>
+            
+            {% if error %}
+            <div class="login-error">
+                ❌ {{ error }}
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</body>
+</html>

@@ -4,7 +4,8 @@ import threading
 import time
 import re
 import webbrowser
-from flask import Flask, render_template, jsonify, request
+import socket
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit
 
 def load_dotenv():
@@ -49,12 +50,61 @@ app.config['SECRET_KEY'] = os.environ.get('TPRIS_PASSWORD', 'hospital-secret!')
 # 明確指定 async_mode='threading' 避免 PyInstaller 打包後找不到非同步驅動
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
+
+@app.context_processor
+def inject_host_info():
+    return {
+        'host_ip': get_local_ip(),
+        'port': 5000
+    }
+
+@app.before_request
+def check_auth():
+    # 靜態資源、登入頁面與 API 同步接口不攔截
+    if request.path.startswith('/static/') or request.path == '/login' or request.path == '/api/update_patients' or request.path == '/manifest.json' or request.path == '/sw.js':
+        return
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password')
+        target_password = os.environ.get('TPRIS_PASSWORD', '18507')
+        if password == target_password:
+            session['authenticated'] = True
+            return redirect(url_for('index'))
+        else:
+            error = "密碼不正確，請重新輸入！"
+    return render_template('login.html', error=error)
+
+
 # 存放目前的請求狀態 (簡易版，不持久化)
 current_requests = {}
 # 存放已經發送過的病患，避免重複出現 (使用 record_no + exam 作為唯一鍵)
 sent_patients = set()
 # 存放已經手動報到過的病患
 checked_in_patients = set()
+
+def sort_patients(patients):
+    """排序病患：未報到 (最上端) -> 已報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
+    # 穩定排序：先依單號降序 (新單在上)
+    patients_by_date = sorted(patients, key=lambda x: x.get('order_no', ''), reverse=True)
+    # 再依狀態升序 (0: 未報到, 1: 已報到, 2: 已分派)
+    return sorted(patients_by_date, key=lambda x: 2 if x.get('dispatched') else (1 if x.get('checked_in') else 0))
 
 @app.route('/')
 def index():
@@ -152,8 +202,13 @@ def voice_dispatch():
         patient_key = f"{matched_patient.get('record_no')}|{matched_patient.get('exam')}"
         sent_patients.add(patient_key)
         
-        # 從全局待發送名單中剔除，並推播更新發送端畫面
-        patients_data = [p for p in patients_data if f"{p.get('record_no')}|{p.get('exam')}" != patient_key]
+        # 不要從全域剔除，改為標記已分派，並推播更新發送端畫面
+        matched_patient['dispatched'] = True
+        for p in patients_data:
+            if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                p['dispatched'] = True
+                break
+        patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
         
         # 廣播新派遣請求給接收端 (Receiver)
@@ -185,16 +240,15 @@ def update_patients():
     global patients_data
     data = request.get_json()
     if data is not None:
-        # 過濾掉已經發送過的病患
+        # 不再過濾已發送病患，改為完整保留並標記狀態
         filtered_data = []
         for p in data:
             patient_key = f"{p.get('record_no')}|{p.get('exam')}"
-            if patient_key not in sent_patients:
-                # 標記病患是否已報到
-                p['checked_in'] = (patient_key in checked_in_patients)
-                filtered_data.append(p)
+            p['checked_in'] = (patient_key in checked_in_patients)
+            p['dispatched'] = p.get('dispatched', False) or (patient_key in sent_patients)
+            filtered_data.append(p)
                 
-        patients_data = filtered_data
+        patients_data = sort_patients(filtered_data)
         socketio.emit('patients_updated', patients_data)
         return jsonify({"status": "success", "count": len(patients_data)})
     return jsonify({"status": "error"}), 400
@@ -212,8 +266,12 @@ def handle_request(data):
         patient_key = f"{patient_info.get('record_no')}|{patient_info.get('exam')}"
         sent_patients.add(patient_key)
         
-        # 立刻從全局 patients_data 剔除，並發送推播更新所有發送端畫面
-        patients_data = [p for p in patients_data if f"{p.get('record_no')}|{p.get('exam')}" != patient_key]
+        # 不要從全域剔除，改為標記已分派，並發送推播更新所有發送端畫面
+        for p in patients_data:
+            if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                p['dispatched'] = True
+                break
+        patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
     
     patient_name = patient_info.get('name') if patient_info else 'Unknown'
@@ -248,6 +306,29 @@ def handle_check_in(data):
             break
             
     print(f"病患已手動報到: {record_no} (項目: {exam})")
+    patients_data = sort_patients(patients_data)
+    # 廣播給所有發送端更新畫面
+    socketio.emit('patients_updated', patients_data)
+
+# 取消手動報到請求
+@socketio.on('cancel_check_in_patient')
+def handle_cancel_check_in(data):
+    global patients_data
+    record_no = data.get('record_no')
+    exam = data.get('exam')
+    patient_key = f"{record_no}|{exam}"
+    
+    if patient_key in checked_in_patients:
+        checked_in_patients.remove(patient_key)
+        
+    # 在記憶體中更新目前病患狀態
+    for p in patients_data:
+        if p.get('record_no') == record_no and p.get('exam') == exam:
+            p['checked_in'] = False
+            break
+            
+    print(f"病患已取消手動報到: {record_no} (項目: {exam})")
+    patients_data = sort_patients(patients_data)
     # 廣播給所有發送端更新畫面
     socketio.emit('patients_updated', patients_data)
 

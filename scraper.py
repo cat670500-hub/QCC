@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import datetime
 import requests
 
 # Flask 系統的網址
@@ -33,121 +34,181 @@ def load_dotenv():
 # 載入金鑰設定檔
 load_dotenv()
 
-def get_har_path():
-    """尋找 HAR 檔案的正確路徑，支援開發環境與 PyInstaller 打包環境"""
-    # 1. 優先檢查是否在 PyInstaller 打包後的臨時資料夾
-    if getattr(sys, 'frozen', False):
-        base_dir = sys._MEIPASS
-        path = os.path.join(base_dir, 'tprisweb.shh.org.tw.har')
-        if os.path.exists(path):
-            return path
-            
-    # 2. 檢查目前指令碼所在資料夾
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(script_dir, 'tprisweb.shh.org.tw.har')
-    if os.path.exists(path):
-        return path
-        
-    # 3. 檢查目前工作目錄
-    path = os.path.join(os.getcwd(), 'tprisweb.shh.org.tw.har')
-    if os.path.exists(path):
-        return path
-        
-    return 'tprisweb.shh.org.tw.har'
-
-def parse_har_patients():
-    """解析 HAR 檔案中「檢查項目」為「Chest(AP)Portable」的病患"""
-    har_path = get_har_path()
-    print(f"[{time.strftime('%H:%M:%S')}] 正在載入並解析 HAR 檔案: {har_path}")
+def login_and_get_token(account, password):
+    """登入醫院 TPRIS 系統取得 JWT Token"""
+    url = "https://tprisweb.shh.org.tw/Auth/Login"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    payload = {
+        "Name": account,
+        "Password": password
+    }
     
-    if not os.path.exists(har_path):
-        print(f"[錯誤] 找不到 HAR 檔案：{har_path}")
-        return []
-        
     try:
-        with open(har_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        if response.status_code == 200:
+            res_data = response.json()
+            token = res_data.get('token')
+            if token:
+                return token
+            else:
+                raise ValueError("登入回傳中無效的 Token 欄位")
+        else:
+            raise requests.exceptions.HTTPError(f"登入失敗，伺服器回傳狀態碼: {response.status_code}")
     except Exception as e:
-        print(f"[錯誤] 無法讀取或解析 HAR 檔案 JSON：{e}")
-        return []
-        
+        raise ConnectionError(f"無法連線登入醫院 TPRIS 系統: {e}")
+
+def is_critical_care_bed(bed):
+    """判斷床號是否屬於重症病房 (MICU, SICU, CCU, NCU, RCC, CIU, SIU 等)"""
+    if not bed:
+        return False
+    bed_upper = str(bed).upper().strip()
+    critical_keywords = ['ICU', 'MIU', 'NCU', 'RCC', 'CCU', 'SICU', 'SIU', 'CIU', 'PICU', 'NICU', 'BICU', 'EICU', 'RICU', 'RCW']
+    return any(kw in bed_upper for kw in critical_keywords)
+
+def fetch_live_patients(token):
+    """使用 JWT Token 實時取得今日病患檢查清單 (不加 Status 參數，避免遺漏 56 等狀態的病患)"""
+    url = "https://tprisweb.shh.org.tw/exam/List"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # 動態產生今日的 ISO 8601 時間參數
+    today_str = datetime.date.today().isoformat()
+    params = {
+        "$top": 1000, # 擴大抓取範圍，確保撈取今日所有醫令
+        "$skip": 0,
+        "$orderby": "OrderDate desc",
+        "orderDateStart": f"{today_str}T00:00:00+08:00",
+        "orderDateEnd": f"{today_str}T23:59:59+08:00",
+        "orByDefault": "true"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        if response.status_code == 200:
+            return response.json().get('Items', [])
+        elif response.status_code == 401:
+            raise PermissionError("Token 已過期或未授權 (401)")
+        else:
+            raise requests.exceptions.HTTPError(f"獲取病患清單失敗，狀態碼: {response.status_code}")
+    except Exception as e:
+        if isinstance(e, PermissionError):
+            raise e
+        raise ConnectionError(f"實時 API 連線異常: {e}")
+
+def parse_patients(raw_items):
+    """解析病患清單，並依『醫令名稱符合 Chest(AP)Portable』或『床號為重症病房』做聯集篩選"""
     extracted_patients = []
     seen_keys = set()
     
-    entries = data.get('log', {}).get('entries', [])
-    for entry in entries:
-        url = entry.get('request', {}).get('url', '')
-        if 'exam/List' not in url:
+    # 僅撈取以下活躍狀態的病患 (11:尚未排檢, 12:預約登記, 21:櫃台報到, 56:自動分派/已分派, Hold:暫卡)
+    active_statuses = ['11', '12', '21', '56', 'Hold']
+    
+    for item in raw_items:
+        # 去掉儀器類別為 CT 或 MR/MRI 的病患
+        modality = str(item.get('Modality', '')).upper().strip()
+        if modality in ['CT', 'MR', 'MRI']:
             continue
             
-        text = entry.get('response', {}).get('content', {}).get('text', '')
-        if not text:
+        status = str(item.get('Status', ''))
+        if status not in active_statuses:
             continue
             
-        try:
-            res_data = json.loads(text)
-            items = res_data.get('Items', [])
-            for item in items:
-                proc_name = item.get('ProcedureName', '')
-                # 篩選「檢查項目」為 Chest(AP)Portable 的病人
-                if proc_name == 'Chest(AP)Portable':
-                    pid = item.get('PatientId')
-                    pname = item.get('PatientName')
-                    bed = item.get('BedNo')
-                    
-                    if not pid:
-                        continue
-                        
-                    # 以 (病歷號, 檢查項目) 作為唯一鍵以進行排重
-                    key = (pid, proc_name)
-                    if key not in seen_keys:
-                        seen_keys.add(key)
-                        
-                        # 中文字串正常處理 (Python 內部已解析為 unicode)
-                        extracted_patients.append({
-                            "name": pname or "未知",
-                            "record_no": pid,
-                            "bed": bed if bed else "(無病房資料)",
-                            "exam": proc_name
-                        })
-        except Exception:
-            # 忽略個別 JSON 解析錯誤 of entry
-            continue
+        proc_name = item.get('ProcedureName', '')
+        bed = item.get('BedNo', '')
+        
+        # 條件 1：醫令名稱符合 'Chest(AP)Portable'
+        is_chest_portable = (proc_name == 'Chest(AP)Portable')
+        
+        # 條件 2：病床號符合重症病房
+        is_icu = is_critical_care_bed(bed)
+        
+        # 聯集篩選 (任一符合即呈現)
+        if is_chest_portable or is_icu:
+            pid = item.get('PatientId')
+            pname = item.get('PatientName')
+            source = item.get('PatientSourceTypeName') or "未知"
+            accession_no = item.get('AccessionNo', '')
+            order_no = item.get('OrderNo', '')
             
+            if not pid:
+                continue
+                
+            # 排重鍵
+            key = (pid, proc_name)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                
+                extracted_patients.append({
+                    "name": pname or "未知",
+                    "record_no": pid,
+                    "bed": bed if bed else "(無病房資料)",
+                    "exam": proc_name,
+                    "source": source,
+                    "accession_no": accession_no,
+                    "order_no": order_no,
+                    # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
+                    "dispatched": (status == '56')
+                })
+                
     return extracted_patients
 
 def run_scraper():
     print("==================================================")
-    print("  啟動 HAR 檔案解析器 (取代原本的 Playwright 爬蟲) ")
+    print("      啟動實時醫院 API 爬蟲系統 (完全連線模式)      ")
     print("==================================================")
     
     account = os.environ.get('TPRIS_ACCOUNT', '未設定')
     password = os.environ.get('TPRIS_PASSWORD', '未設定')
-    print(f"  金鑰登入帳號: {account}")
-    print(f"  金鑰登入密碼: {'*' * len(password) if password != '未設定' else '未設定'}")
+    
+    if account == '未設定' or password == '未設定':
+        print("[錯誤] 未在 .env 設定 TPRIS_ACCOUNT 與 TPRIS_PASSWORD！無法啟動爬蟲！")
+        return
+        
+    print(f"  連線帳號: {account}")
     print("-" * 50)
     
-    # 讀取並解析病患資料 (HAR 檔為靜態，只需讀取一次)
-    patients = parse_har_patients()
+    token = None
     
-    print(f"[{time.strftime('%H:%M:%S')}] [成功] 共尋找到 {len(patients)} 筆符合條件的病患：")
-    for i, p in enumerate(patients, 1):
-        print(f"  病患 {i}: {p['name']} ({p['record_no']}) - 床號: {p['bed']} - 項目: {p['exam']}")
-    print("-" * 50)
-    
-    # 週期性同步名單給 Flask，讓 status_manager 能過濾已派遣病患並回傳最新名單
     while True:
         try:
-            print(f"[{time.strftime('%H:%M:%S')}] 正在同步名單至 Flask 系統...")
-            response = requests.post(FLASK_API_URL, json=patients)
-            if response.status_code == 200:
-                print("✅ 成功同步最新名單至 Flask 系統！")
-            else:
-                print(f"❌ 同步失敗，伺服器回傳狀態碼: {response.status_code}")
-        except Exception as e:
-            print(f"❌ 無法連線到 Flask 系統 (請確定 app.py 有啟動): {e}")
+            # 1. 確保有 Token
+            if not token:
+                print(f"[{time.strftime('%H:%M:%S')}] 正在登入醫院系統並取得安全 Token...")
+                token = login_and_get_token(account, password)
+                print("[成功] 成功取得安全驗證 Token！")
+                
+            # 2. 獲取實時資料
+            print(f"[{time.strftime('%H:%M:%S')}] 正在從醫院網路 API 實時撈取今日檢查清單...")
+            raw_items = fetch_live_patients(token)
             
-        print("等待 10 秒...\n" + "-"*30)
+            # 3. 解析與篩選
+            patients = parse_patients(raw_items)
+            print(f"[成功] 實時取得成功！共撈取到 {len(patients)} 筆符合條件 (醫令或重症病房) 的今日病患。")
+            
+            # 4. 同步至 Flask 主系統
+            response = requests.post(FLASK_API_URL, json=patients, timeout=5)
+            if response.status_code == 200:
+                print("[同步] 成功同步實時名單至主系統平台！")
+            else:
+                print(f"[錯誤] 同步主系統失敗，伺服器狀態碼: {response.status_code}")
+                
+        except PermissionError:
+            print("[警告] Token 已失效，將於下次輪詢時自動重登刷新 Token...")
+            token = None
+            
+        except Exception as e:
+            # 依據使用者需求：若無法連上醫院網路實時取得資料就回報錯誤！
+            print(f"\n[錯誤] 無法連上醫院網路實時取得資料！請確認醫院 VPN 或內網連線是否正常。")
+            print(f"   詳細錯誤資訊: {e}\n")
+            
+        print("等待 10 秒後再次進行實時輪詢...\n" + "-"*40)
         time.sleep(10)
 
 if __name__ == "__main__":

@@ -385,6 +385,9 @@
             <span id="connectionText">連線中...</span>
         </div>
     </div>
+    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.8rem; text-align: left; color: #10b981; font-weight: bold;">
+        🔗 系統連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
+    </div>
 
     <!-- 語音控制與回饋面版 -->
     <div class="voice-control-panel">
@@ -494,12 +497,15 @@
             const container = document.getElementById('incomingRequests');
             container.innerHTML = '';
 
-            if (activePatients.length === 0) {
+            // 僅顯示未分派的病患
+            const pendingPatients = activePatients.filter(p => !p.dispatched);
+
+            if (pendingPatients.length === 0) {
                 container.innerHTML = '<div class="no-data">目前無待處理的派遣單</div>';
                 return;
             }
 
-            activePatients.forEach((p, index) => {
+            pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
                 card.className = 'request-card waiting';
                 card.id = `CARD-${p.record_no}`;
@@ -517,7 +523,7 @@
                         <span>病歷號: <strong>${p.record_no}</strong></span>
                     </div>
                     <div class="action-container">
-                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}', ${index})">
+                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}')">
                             ✔️ 接受
                         </button>
                     </div>
@@ -527,10 +533,11 @@
         }
 
         // 手動確認
-        function manualConfirm(recordNo, index) {
+        function manualConfirm(recordNo) {
             // 新增一個動態的 REQ ID 以對應 socketio 流程
             const reqId = 'REQ-MOB-' + Date.now();
-            const p = activePatients[index];
+            const p = activePatients.find(x => x.record_no === recordNo);
+            if (!p) return;
             
             socket.emit('send_request', { id: reqId, patient: p });
             setTimeout(() => {
@@ -698,7 +705,7 @@
             for (let i = 0; i < activePatients.length; i++) {
                 const p = activePatients[i];
                 if (text.includes(p.name)) {
-                    manualConfirm(p.record_no, i);
+                    manualConfirm(p.record_no);
                     return;
                 }
             }

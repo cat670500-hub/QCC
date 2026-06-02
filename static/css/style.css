@@ -23,9 +23,11 @@ body {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
     text-align: center;
-    width: 350px;
-    max-height: 80vh;
-    overflow-y: auto;
+    width: 90%;
+    max-width: 1200px;
+    max-height: 90vh;
+    overflow: auto;
+    resize: both;
 }
 
 button {
@@ -93,3 +95,145 @@ button:disabled {
     background: #e0f2fe;
     color: #0369a1;
 }
+
+/* --- 新增病患狀態卡片樣式 --- */
+.request-box.status-unchecked-in {
+    border-left: 6px solid #94a3b8 !important;
+    background: rgba(248, 250, 252, 0.95);
+    box-shadow: 0 4px 12px rgba(148, 163, 184, 0.08);
+}
+
+.request-box.status-checked-in {
+    border-left: 6px solid #3b82f6 !important;
+    background: rgba(239, 246, 255, 0.95);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.08);
+}
+
+.request-box.status-dispatched {
+    border-left: 6px solid #8b5a2b !important;
+    background: rgba(250, 243, 233, 0.95);
+    box-shadow: 0 4px 12px rgba(139, 90, 43, 0.08);
+}
+
+.checked-in-badge {
+    transition: all 0.3s ease;
+}
+
+/* --- 新增登入頁面 Glassmorphism 樣式 --- */
+.login-body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.login-card {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 2.5rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    width: 380px;
+    text-align: center;
+    color: #f8fafc;
+    animation: fadeIn 0.6s ease-out;
+}
+
+.login-card h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    background: linear-gradient(to right, #38bdf8, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.login-card p {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    margin-bottom: 25px;
+}
+
+.login-input-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.login-input-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+
+.login-input {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #f8fafc;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.login-input:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+.login-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+    transition: all 0.3s ease;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
+    filter: brightness(1.1);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+.login-error {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin-top: 15px;
+    text-align: center;
+    animation: shake 0.4s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
