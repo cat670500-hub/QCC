@@ -37,11 +37,18 @@
                 
                 <span id="voiceStatus" style="font-size: 0.9rem; color: #64748b; font-weight: 500; font-style: italic;">💡 支援語音：「[病患姓名/病歷號] + 報到 / 取消報到 / 發送」</span>
             </div>
+            
+            <!-- 搜尋輸入框 -->
+            <div style="margin-bottom: 18px; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 500px;">
+                <span style="font-size: 0.95rem; font-weight: bold; color: #475569; white-space: nowrap;">🔍 快速篩選病歷號：</span>
+                <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入病歷號或姓名進行快速搜尋..." style="flex-grow: 1; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); background: rgba(255,255,255,0.7); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; outline: none; transition: all 0.3s ease; width: 100%;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59, 130, 246, 0.15)';" onblur="this.style.borderColor='rgba(0,0,0,0.12)'; this.style.boxShadow='none';">
+            </div>
+            
             <div id="patientListDiv" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; max-height: 480px; overflow-y: auto; padding: 10px;">
                 {% for p in patients %}
                 {% set status_class = 'status-dispatched' if p.dispatched else ('status-checked-in' if p.checked_in else 'status-unchecked-in') %}
                 {% set app_no = p.accession_no[:-5] if p.accession_no and p.accession_no|length > 5 else p.order_no %}
-                <div class="request-box {{ status_class }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
+                <div class="request-box {{ status_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
                         <span>
                             <strong>檢查部位: {{ p.exam }}</strong><br>
@@ -158,6 +165,10 @@
             reqDiv.style.flexDirection = 'column';
             reqDiv.style.alignItems = 'flex-start';
             reqDiv.style.transition = 'all 0.3s ease';
+            
+            // 設定自訂屬性以便前端快速篩選
+            reqDiv.setAttribute('data-record', p.record_no);
+            reqDiv.setAttribute('data-name', p.name);
             
             // 決定狀態樣式與背景顏色
             if (p.dispatched) {
@@ -300,6 +311,7 @@
             data.forEach(p => {
                 listDiv.appendChild(renderPatientCard(p));
             });
+            filterPatients(); // 重新套用快速搜尋過濾
             console.log("已接收最新病患名單，畫面已同步更新！");
         });
 
@@ -314,6 +326,7 @@
                     data.forEach(p => {
                         listDiv.appendChild(renderPatientCard(p));
                     });
+                    filterPatients(); // 重新套用快速搜尋過濾
                 })
                 .catch(err => console.error("更新失敗:", err));
         }
@@ -472,6 +485,24 @@
                 document.getElementById('voiceStatus').innerText = `辨識到病患 ${matchedPatient.name}，請明確命令「報到」、「取消報到」或「發送」`;
                 document.getElementById('voiceStatus').style.color = '#eab308';
             }
+        }
+
+        // 快速篩選病歷號與姓名
+        function filterPatients() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const cards = document.querySelectorAll('#patientListDiv .request-box');
+            
+            cards.forEach(card => {
+                const recordNo = card.getAttribute('data-record') || '';
+                const name = card.getAttribute('data-name') || '';
+                
+                // 比對病歷號 (Patient ID) 或姓名
+                if (recordNo.toLowerCase().includes(query) || name.toLowerCase().includes(query)) {
+                    card.style.display = ''; // 顯示符合條件的卡片
+                } else {
+                    card.style.display = 'none'; // 隱藏不符合的卡片
+                }
+            });
         }
     </script>
 </body>
