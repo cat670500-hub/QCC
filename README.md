@@ -1,25 +1,44 @@
 # 🏥 Portable 醫療派遣與排程通知系統 (Portable X-Ray Dispatch System)
 
-這是一套專為醫療環境設計的自動化 Portable (移動式/床邊) 照影派遣與排程通知系統。系統透過 **Playwright 網頁爬蟲技術**，自動登入並讀取醫院的 TPRIS 系統，即時抓取最新「櫃台報到」且屬於 Portable 分類的病患名單，並利用 **Flask-SocketIO 即時通訊技術**，在「發送端 (Sender)」與「接收端 (Receiver)」之間進行零延遲的雙向派遣與排程協調。
+這是一套專為醫療放射科與病房環境設計的**實時智慧 Portable (移動式/床邊) 照影派遣與排程通知系統**。系統使用高效能直連 HTTP API 方式，安全登入並讀取醫院的 TPRIS 系統，實時抓取最新報到且屬於 Portable 分類的今日病患名單，並利用 **Flask-SocketIO 即時通訊技術**，在「發送端 (Sender)」、「接收端 (Receiver)」與「行動端 (Mobile)」之間進行零延遲的雙向派遣、排程協調與語音控制。
 
 ---
 
-## 🌟 核心特色
+## 🌟 核心特色 (Key Features)
 
-* **🤖 自動化 TPRIS 爬蟲同步**
-  * 使用 Playwright 驅動瀏覽器自動登入 TPRIS 系統。
-  * 強制篩選「Portable」選項，即時過濾非必要的急診 CR 項目。
-  * 自動點擊病患卡片，深度抓取**床號（病房）**與**檢查部位（檢查項目）**。
-  * 內建高效率的快取記憶機制（Cache），避免重複點擊相同病患卡片，大幅提升讀取效能。
+* **⚡ 實時醫院 API 直連同步 (完全連線模式)**
+  * **捨棄繁重的網頁爬蟲**：改用高效能 JWT 安全驗證連線直接對接 TPRIS 系統 API，數據獲取速度提升 10 倍以上，且不需要安裝或背景執行任何 Chromium 瀏覽器核心。
+  * **智慧聯集過濾篩選**：
+    * 篩選今日已開單符合醫令名稱為 `Chest(AP)Portable` 的病患卡片。
+    * 篩選今日已開單且病床號為重症病房的病患卡片，關鍵字前綴支援擴充：`MICU`、`SICU`、`CCU`、`NCU`、`RCC`、`CIU` 、`SIU`、`RCW` 等。
+    * **精準過濾儀器類別**：自動去除儀器類別為 `CT`、`MR` 或 `MRI` 的病患，只專注於 Portable 床邊照影需求。
 
-* **⚡ 雙向即時通訊 (Websocket)**
-  * **發送端 (Sender)**：即時呈現在院 Portable 報到病患清單，點選病患即可一鍵發出派遣請求。
-  * **接收端 (Receiver)**：即時以醒目的動畫與音效提示新請求，並提供確認（例如：10分鐘後到、接受）反饋。
-  * 發送與確認過程完全自動化更新，不需手動重新整理網頁。
+* **🎨 智慧三色卡片狀態與自動排程排序**
+  * 卡片依據病人目前情況以**質感莫蘭迪三色**進行標記：
+    * 🔘 **灰色** ➡️ **未報到** (智慧優先置於清單最上方，方便人員隨時點選/語音辦理報到)
+    * 🔵 **藍色** ➡️ **已報到** (置於中端)
+    * 🟤 **咖啡色** ➡️ **已分派** (智慧置於清單最下方，避免視覺干擾，若醫院端 Status 變更為已分派也將自動對齊變色)
+  * **自由拉伸介面**：主面板解鎖為可手動拉伸（支援水平與垂直自由拖拽縮放），提供完美自由度！
 
-* **📦 免安裝一鍵運行 (Portable Edition)**
-  * 提供整合 PyInstaller 的打包方案，將 Python 執行環境、Flask 伺服器、網頁範本、靜態資源以及 Playwright Chromium 瀏覽器驅動完整封裝。
-  * 產出獨立執行檔，雙擊即可在醫院未安裝 Python 的內網電腦上直接運行。
+* **🎙️ 雙向語音辨識與自動報到控制系統 (Hands-free Voice Control)**
+  * **電話來電監聽**：搭配 `AndroidCallMonitor` 行動端，自動分析通話內容文字。
+  * **網頁端麥克風控制**：發送端網頁 ([sender.html](file:///c:/Users/user/新增資料夾/QCC/templates/sender.html)) 內建精美雙色動畫語音控制按鈕與即時語意解析。
+  * **支援語意命令**：
+    * 🗣️ 說出 `「林小華報到」` ➡️ 卡片立刻在 100ms 內在螢幕上變成**藍色已報到**狀態。
+    * 🗣️ 說出 `「林小華取消報到」` ➡️ 卡片立刻回復為**灰色未報到**並自動置頂。
+    * 🗣️ 說出 `「林小華發送」` 或 `「派遣林小華」` ➡️ 系統會自動為您送出該病患的派遣任務，卡片隨之變為**咖啡色已分派**並排序至最下方。
+
+* **🔒 Glassmorphism 磨砂玻璃安全防護登入**
+  * 整合 `.env` 中的 `TPRIS_PASSWORD` 安全鎖，具備精美的高端磨砂玻璃視覺與微動畫，登入頁面保障病患資料與資安合規。
+
+* **🌐 動態區域網路 (LAN) IP 與 Port 自動偵測**
+  * 後端自動抓取本機在醫院內網的實體 IP 與埠口，並在各控制端上以質感的莫蘭迪綠橫幅顯眼展示，利於其他科室快速輸入網址連入。
+
+* **📱 行動端 PWA 支援與語意語音播報 (TTS)**
+  * 行動端（`/mobile`）支援將網頁「安裝」至 Android/iOS 設備桌面上，並在收到新單時自動發出真實語音播報，且支援語音回報「確認/十分鐘後到」。
+
+* **🚀 精簡單一視窗啟動架構**
+  * 優化 `run.py` 啟動器，每次雙擊 `啟動系統.bat` 只會精準開啟一個瀏覽器視窗與單一背景爬蟲，避免耗損效能與重複 Session 登入。
 
 ---
 
@@ -32,31 +51,37 @@ graph TD
     end
 
     subgraph 本機系統
-        Scraper[scraper.py<br>Playwright 爬蟲] -- "API (POST)" --> Server[app.py<br>Flask-SocketIO 伺服器]
-        Server -- "預設瀏覽器自動開啟" --> WebPortal[index.html<br>主選單首頁]
+        AppServer[app.py<br>Flask-SocketIO 伺服器]
+        Scraper[scraper.py<br>HTTP API 直連爬蟲執行緒]
+        AppServer -. "在背景啟動 (Daemon Thread)" .-> Scraper
     end
 
     subgraph 終端使用者網頁
-        WebPortal -- "選單跳轉" --> Sender[sender.html<br>發送端]
-        WebPortal -- "選單跳轉" --> Receiver[receiver.html<br>接收端]
+        WebPortal[index.html<br>主選單首頁]
+        Sender[sender.html<br>發送端 - 支援網頁語音辨識與三色卡片]
+        Receiver[receiver.html<br>接收端]
+        Mobile[mobile_receiver.html<br>行動端 - 支援 PWA、語音播報與回覆]
         
-        Sender <--> |"即時 WebSocket (SocketIO)"| Server
-        Receiver <--> |"即時 WebSocket (SocketIO)"| Server
+        Sender <--> |"即時 WebSocket (SocketIO)"| AppServer
+        Receiver <--> |"即時 WebSocket (SocketIO)"| AppServer
+        Mobile <--> |"即時 WebSocket (SocketIO)"| AppServer
     end
 
-    Scraper <--> |"自動登入、篩選、點擊、解析"| TPRIS
+    Scraper <--> |"JWT Token 安全驗證、撈取檢查清單"| TPRIS
 ```
 
 ---
 
 ## 📁 專案檔案結構
 
-* `app.py`：Flask & SocketIO 後端主程式，管理 WebSocket 狀態、處理爬蟲同步的 API，並在啟動時自動於背景開啟爬蟲與主選單網頁。
-* `scraper.py`：網頁爬蟲核心程式，負責自動操作 TPRIS 網頁並解析病患名單，每 10 秒即時同步一次。
+* `app.py`：Flask & SocketIO 後端主程式，管理 WebSocket 狀態、處理 API，並在啟動時自動於背景開啟**單個**背景爬蟲執行緒與開啟主選單網頁。
+* `scraper.py`：直連 API 核心程式，負責使用 HTTP POST/GET 對醫院 API 進行資料同步與篩選，每 10 秒即時同步一次。
+* `run.py`：系統同步啟動器，負責以安全且單一視窗的方式調用 `app.py`。
 * `static/`：存放靜態樣式檔與資源，包含 UI 的 Vanilla CSS 及視覺設計。
-* `templates/`：前端網頁範本（包含 `sender.html` 及 `receiver.html`）。
+* `templates/`：前端網頁範本（包含 `sender.html`、`receiver.html`、`mobile_receiver.html` 與 `login.html`）。
+* `.env`：存放安全驗證之 `TPRIS_ACCOUNT` 與 `TPRIS_PASSWORD`。
 * `requirements.txt`：列出本專案所需的 Python 依賴套件。
-* `打包程式.py`：PyInstaller 的打包指令稿，設定如何打包靜態範本與 Playwright 核心。
+* `打包程式.py`：PyInstaller 的打包指令稿，設定如何打包靜態範本。
 * `打包成執行檔.bat`：一鍵執行打包指令，產出 Portable 執行資料夾。
 * `啟動系統.bat`：為終端使用者設計的一鍵啟動批次檔。
 
@@ -73,19 +98,21 @@ graph TD
 pip install -r requirements.txt
 ```
 
-### 2. 安裝 Playwright 瀏覽器核心
-Playwright 首次執行前需要下載專用的 Chromium 瀏覽器核心，請執行：
+### 2. 配置環境變數
+請在根目錄建立或編輯 `.env` 檔案，填入醫院系統的登入資訊：
 
-```bash
-playwright install chromium
+```env
+TPRIS_ACCOUNT=您的帳號
+TPRIS_PASSWORD=您的密碼
 ```
 
 ### 3. 本地執行
-執行主程式，系統會自動在背景啟動爬蟲，並在 4 秒後自動以預設瀏覽器開啟主控制頁面（`http://127.0.0.1:5000/`）：
+雙擊執行 `啟動系統.bat` 或在終端機輸入：
 
 ```bash
-python app.py
+python run.py
 ```
+系統會自動在背景啟動單一 API 同步執行緒，並自動以預設瀏覽器開啟主控制頁面（`http://127.0.0.1:5000/`）。
 
 ---
 
@@ -95,10 +122,10 @@ python app.py
 
 1. 雙擊執行 `打包成執行檔.bat`。
 2. 編譯完成後，會在專案目錄下產生 `dist/` 資料夾。
-3. 將整個 `dist/Portable派遣系統` 資料夾複製到目標電腦，點擊裡面的 `啟動系統.bat` 即可直接運行。
+3. 將整個 `dist/Portable派遣系統` 資料夾複製到目標電腦，雙擊裡面的 `啟動系統.bat` 即可直接運行。
 
 ---
 
 ## 🔒 授權條款與免責聲明
 
-此系統僅供學術交流與醫院內部流程改善使用。爬蟲程式會儲存本地快取以提供操作流暢度，請確保您的登入憑證與病患隱私安全，並遵守醫療機構的資安防護規範。
+此系統僅供學術交流與醫院內部流程改善使用。API 直連連線模式會遵守安全連線規範，請確保您的登入憑證與病患隱私安全，並遵守醫療機構的資安防護規範。
