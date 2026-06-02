@@ -120,7 +120,7 @@ def parse_patients(raw_items):
         if status not in active_statuses:
             continue
             
-        proc_name = item.get('ProcedureName', '')
+        proc_name = str(item.get('ProcedureName', '')).strip()
         bed = item.get('BedNo', '')
         
         # 條件 1：醫令名稱符合 'Chest(AP)Portable'
