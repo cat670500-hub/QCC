@@ -78,17 +78,64 @@ def check_auth():
     if not session.get('authenticated'):
         return redirect(url_for('login'))
 
+def get_all_operators():
+    """從環境變數中解析所有操作人員的帳號與密碼對應"""
+    operators = {}
+    
+    # 支援單一帳密 (Legacy/預設)
+    legacy_acc = os.environ.get('TPRIS_ACCOUNT')
+    legacy_pwd = os.environ.get('TPRIS_PASSWORD')
+    if legacy_acc and legacy_pwd:
+        operators[legacy_acc] = legacy_pwd
+        
+    # 支援多組帳密 (例如 TPRIS_ACCOUNT_1, TPRIS_PASSWORD_1 等)
+    for key, val in os.environ.items():
+        if key.startswith('TPRIS_ACCOUNT_'):
+            suffix = key[len('TPRIS_ACCOUNT_'):]
+            pwd_key = f'TPRIS_PASSWORD_{suffix}'
+            pwd_val = os.environ.get(pwd_key)
+            if pwd_val:
+                operators[val] = pwd_val
+                
+    return operators
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
     if request.method == 'POST':
-        password = request.form.get('password')
-        target_password = os.environ.get('TPRIS_PASSWORD', '18507')
-        if password == target_password:
+        account_input = request.form.get('account', '').strip()
+        password_input = request.form.get('password', '').strip()
+        
+        operators = get_all_operators()
+        matched_account = None
+        matched_password = None
+        
+        if account_input:
+            # 如果輸入了帳號，進行精確匹配
+            if account_input in operators and operators[account_input] == password_input:
+                matched_account = account_input
+                matched_password = password_input
+        else:
+            # 如果沒有輸入帳號，僅憑密碼自動尋找對應帳號
+            for acc, pwd in operators.items():
+                if pwd == password_input:
+                    matched_account = acc
+                    matched_password = pwd
+                    break
+                    
+        if matched_account:
             session['authenticated'] = True
+            session['operator_account'] = matched_account
+            
+            # 動態更新目前環境變數中作用的帳密，供背景爬蟲執行緒讀取，從而登記不同的操作人員
+            os.environ['TPRIS_ACCOUNT'] = matched_account
+            os.environ['TPRIS_PASSWORD'] = matched_password
+            print(f"[系統] 成功變更當前登入的操作人員為: {matched_account}")
+            
             return redirect(url_for('index'))
         else:
-            error = "密碼不正確，請重新輸入！"
+            error = "帳號或密碼不正確，請重新輸入！"
+            
     return render_template('login.html', error=error)
 
 
@@ -288,7 +335,8 @@ def update_patients():
         filtered_data = []
         for p in data:
             patient_key = f"{p.get('record_no')}|{p.get('exam')}"
-            p['checked_in'] = (patient_key in checked_in_patients)
+            # 優先保留醫院端的已報到狀態 (如 status == '21')，或本系統手動/語音報到的狀態
+            p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
             p['dispatched'] = p.get('dispatched', False) or (patient_key in sent_patients)
             filtered_data.append(p)
                 

@@ -153,6 +153,8 @@ def parse_patients(raw_items):
                     "source": source,
                     "accession_no": accession_no,
                     "order_no": order_no,
+                    # 如果醫院端狀態為 21 (櫃台報到)，則直接標記為已報到 (checked_in)
+                    "checked_in": (status == '21'),
                     # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
                     "dispatched": (status == '56')
                 })
@@ -164,25 +166,34 @@ def run_scraper():
     print("      啟動實時醫院 API 爬蟲系統 (完全連線模式)      ")
     print("==================================================")
     
-    account = os.environ.get('TPRIS_ACCOUNT', '未設定')
-    password = os.environ.get('TPRIS_PASSWORD', '未設定')
-    
-    if account == '未設定' or password == '未設定':
-        print("[錯誤] 未在 .env 設定 TPRIS_ACCOUNT 與 TPRIS_PASSWORD！無法啟動爬蟲！")
-        return
-        
-    print(f"  連線帳號: {account}")
-    print("-" * 50)
-    
+    current_account = None
+    current_password = None
     token = None
     
     while True:
         try:
+            # 每次輪詢動態讀取最新的環境變數，以支援不同操作人員的登入與切換
+            env_account = os.environ.get('TPRIS_ACCOUNT', '未設定')
+            env_password = os.environ.get('TPRIS_PASSWORD', '未設定')
+            
+            if env_account == '未設定' or env_password == '未設定':
+                print("[錯誤] 未在環境或登入對應中設定 TPRIS_ACCOUNT 與 TPRIS_PASSWORD！等待操作人員登入...")
+                time.sleep(5)
+                continue
+                
+            # 偵測到操作人員變更，強制重置 Token 並使用新帳密登入醫院系統
+            if env_account != current_account or env_password != current_password:
+                print(f"\n[{time.strftime('%H:%M:%S')}] 偵測到當前操作人員變更為: {env_account}")
+                print(f"[{time.strftime('%H:%M:%S')}] 正在以新操作人員帳號進行醫院系統登入安全驗證...")
+                current_account = env_account
+                current_password = env_password
+                token = None  # 強制清除舊 Token
+                
             # 1. 確保有 Token
             if not token:
-                print(f"[{time.strftime('%H:%M:%S')}] 正在登入醫院系統並取得安全 Token...")
-                token = login_and_get_token(account, password)
-                print("[成功] 成功取得安全驗證 Token！")
+                print(f"[{time.strftime('%H:%M:%S')}] 正在以操作人員 {current_account} 登入醫院系統並取得安全 Token...")
+                token = login_and_get_token(current_account, current_password)
+                print(f"[成功] 操作人員 {current_account} 成功取得安全驗證 Token！")
                 
             # 2. 獲取實時資料
             print(f"[{time.strftime('%H:%M:%S')}] 正在從醫院網路 API 實時撈取今日檢查清單...")

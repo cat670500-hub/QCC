@@ -385,8 +385,11 @@
             <span id="connectionText">連線中...</span>
         </div>
     </div>
-    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.8rem; text-align: left; color: #10b981; font-weight: bold;">
-        🔗 系統連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
+    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; color: #10b981; font-weight: bold;">
+        <span>🔗 系統連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a></span>
+        {% if session.operator_account %}
+            <span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 {{ session.operator_account }}</span>
+        {% endif %}
     </div>
 
     <!-- 語音控制與回饋面版 -->
