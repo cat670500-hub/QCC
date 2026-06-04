@@ -151,6 +151,10 @@ def parse_patients(raw_items):
             if key not in seen_keys:
                 seen_keys.add(key)
                 
+                # 若醫院端狀態為 21 (櫃台報到) 或 CheckInTime 有時間值，則標記為已報到 (checked_in)
+                raw_check_in_time = item.get('CheckInTime')
+                is_checked_in = (status == '21' or (raw_check_in_time is not None and str(raw_check_in_time).strip() != ""))
+                
                 extracted_patients.append({
                     "name": pname,
                     "record_no": pid,
@@ -159,8 +163,7 @@ def parse_patients(raw_items):
                     "source": source,
                     "accession_no": accession_no,
                     "order_no": order_no,
-                    # 如果醫院端狀態為 21 (櫃台報到)，則直接標記為已報到 (checked_in)
-                    "checked_in": (status == '21'),
+                    "checked_in": is_checked_in,
                     # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
                     "dispatched": (status == '56')
                 })
