@@ -131,24 +131,30 @@ def parse_patients(raw_items):
         
         # 聯集篩選 (任一符合即呈現)
         if is_chest_portable or is_icu:
-            pid = item.get('PatientId')
-            pname = item.get('PatientName')
-            source = item.get('PatientSourceTypeName') or "未知"
-            accession_no = item.get('AccessionNo', '')
-            order_no = item.get('OrderNo', '')
-            
+            raw_pid = item.get('PatientId')
+            if raw_pid is None:
+                continue
+            pid = str(raw_pid).strip()
             if not pid:
                 continue
                 
+            pname = str(item.get('PatientName') or '').strip() or "未知"
+            source = str(item.get('PatientSourceTypeName') or '').strip() or "未知"
+            accession_no = str(item.get('AccessionNo') or '').strip()
+            order_no = str(item.get('OrderNo') or '').strip()
+            
+            raw_bed = item.get('BedNo')
+            bed_str = str(raw_bed).strip() if raw_bed is not None else ""
+            
             # 排重鍵
             key = (pid, proc_name)
             if key not in seen_keys:
                 seen_keys.add(key)
                 
                 extracted_patients.append({
-                    "name": pname or "未知",
+                    "name": pname,
                     "record_no": pid,
-                    "bed": bed if bed else "(無病房資料)",
+                    "bed": bed_str if bed_str else "(無病房資料)",
                     "exam": proc_name,
                     "source": source,
                     "accession_no": accession_no,

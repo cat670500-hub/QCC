@@ -225,8 +225,9 @@ def voice_dispatch():
     record_numbers = re.findall(r'\d{6,10}', text)
     if record_numbers:
         for r_no in record_numbers:
+            r_no_clean = str(r_no).strip()
             for p in patients_data:
-                if p.get('record_no') == r_no:
+                if str(p.get('record_no', '')).strip() == r_no_clean:
                     matched_patient = p
                     break
             if matched_patient:
@@ -235,23 +236,27 @@ def voice_dispatch():
     # 2. 如果病歷號沒配對到，用病患姓名比對
     if not matched_patient:
         for p in patients_data:
-            p_name = p.get('name')
+            p_name = str(p.get('name', '')).strip()
             if p_name and p_name in text:
                 matched_patient = p
                 break
                 
     # 3. 如果找到了配對的病患，依據語音內容執行對應動作
     if matched_patient:
-        patient_key = f"{matched_patient.get('record_no')}|{matched_patient.get('exam')}"
+        matched_record_no = str(matched_patient.get('record_no', '')).strip()
+        matched_exam = str(matched_patient.get('exam', '')).strip()
+        patient_key = f"{matched_record_no}|{matched_exam}"
         
         # 情況 A：語音要求取消報到
         if "取消報到" in text:
-            print(f"=> [語音自動取消報到] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，進行取消報到變更...")
+            print(f"=> [語音自動取消報到] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，進行取消報到變更...")
             if patient_key in checked_in_patients:
                 checked_in_patients.remove(patient_key)
             
             for p in patients_data:
-                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                p_rec = str(p.get('record_no', '')).strip()
+                p_ex = str(p.get('exam', '')).strip()
+                if f"{p_rec}|{p_ex}" == patient_key:
                     p['checked_in'] = False
                     break
             
@@ -267,11 +272,13 @@ def voice_dispatch():
             
         # 情況 B：語音要求報到
         elif "報到" in text:
-            print(f"=> [語音自動報到] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，進行報到狀態變更...")
+            print(f"=> [語音自動報到] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，進行報到狀態變更...")
             checked_in_patients.add(patient_key)
             
             for p in patients_data:
-                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                p_rec = str(p.get('record_no', '')).strip()
+                p_ex = str(p.get('exam', '')).strip()
+                if f"{p_rec}|{p_ex}" == patient_key:
                     p['checked_in'] = True
                     break
             
@@ -288,7 +295,7 @@ def voice_dispatch():
         # 情況 C：預設為執行自動派遣
         else:
             req_id = 'REQ-VOICE-' + str(int(time.time()))
-            print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_patient['record_no']})，開始自動派遣...")
+            print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，開始自動派遣...")
             
             # 記錄為已發送，避免重複出現在待發送清單中
             sent_patients.add(patient_key)
@@ -296,7 +303,9 @@ def voice_dispatch():
             # 不要從全域剔除，改為標記已分派，並推播更新發送端畫面
             matched_patient['dispatched'] = True
             for p in patients_data:
-                if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+                p_rec = str(p.get('record_no', '')).strip()
+                p_ex = str(p.get('exam', '')).strip()
+                if f"{p_rec}|{p_ex}" == patient_key:
                     p['dispatched'] = True
                     break
             patients_data = sort_patients(patients_data)
@@ -334,7 +343,13 @@ def update_patients():
         # 不再過濾已發送病患，改為完整保留並標記狀態
         filtered_data = []
         for p in data:
-            patient_key = f"{p.get('record_no')}|{p.get('exam')}"
+            record_no = str(p.get('record_no') or '').strip()
+            exam = str(p.get('exam') or '').strip()
+            # 確保寫入 patients_data 的欄位值是經過標準化（字串化與去除空白）的
+            p['record_no'] = record_no
+            p['exam'] = exam
+            
+            patient_key = f"{record_no}|{exam}"
             # 優先保留醫院端的已報到狀態 (如 status == '21')，或本系統手動/語音報到的狀態
             p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
             p['dispatched'] = p.get('dispatched', False) or (patient_key in sent_patients)
@@ -355,12 +370,16 @@ def handle_request(data):
     
     if patient_info:
         # 記錄為已發送
-        patient_key = f"{patient_info.get('record_no')}|{patient_info.get('exam')}"
+        record_no = str(patient_info.get('record_no') or '').strip()
+        exam = str(patient_info.get('exam') or '').strip()
+        patient_key = f"{record_no}|{exam}"
         sent_patients.add(patient_key)
         
         # 不要從全域剔除，改為標記已分派，並發送推播更新所有發送端畫面
         for p in patients_data:
-            if f"{p.get('record_no')}|{p.get('exam')}" == patient_key:
+            p_rec = str(p.get('record_no') or '').strip()
+            p_ex = str(p.get('exam') or '').strip()
+            if f"{p_rec}|{p_ex}" == patient_key:
                 p['dispatched'] = True
                 break
         patients_data = sort_patients(patients_data)
@@ -385,15 +404,17 @@ def handle_confirm(data):
 @socketio.on('check_in_patient')
 def handle_check_in(data):
     global patients_data
-    record_no = data.get('record_no')
-    exam = data.get('exam')
+    record_no = str(data.get('record_no') or '').strip()
+    exam = str(data.get('exam') or '').strip()
     patient_key = f"{record_no}|{exam}"
     
     checked_in_patients.add(patient_key)
     
     # 在記憶體中更新目前病患狀態
     for p in patients_data:
-        if p.get('record_no') == record_no and p.get('exam') == exam:
+        p_record = str(p.get('record_no') or '').strip()
+        p_exam = str(p.get('exam') or '').strip()
+        if p_record == record_no and p_exam == exam:
             p['checked_in'] = True
             break
             
@@ -406,8 +427,8 @@ def handle_check_in(data):
 @socketio.on('cancel_check_in_patient')
 def handle_cancel_check_in(data):
     global patients_data
-    record_no = data.get('record_no')
-    exam = data.get('exam')
+    record_no = str(data.get('record_no') or '').strip()
+    exam = str(data.get('exam') or '').strip()
     patient_key = f"{record_no}|{exam}"
     
     if patient_key in checked_in_patients:
@@ -415,7 +436,9 @@ def handle_cancel_check_in(data):
         
     # 在記憶體中更新目前病患狀態
     for p in patients_data:
-        if p.get('record_no') == record_no and p.get('exam') == exam:
+        p_record = str(p.get('record_no') or '').strip()
+        p_exam = str(p.get('exam') or '').strip()
+        if p_record == record_no and p_exam == exam:
             p['checked_in'] = False
             break
             
