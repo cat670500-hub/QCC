@@ -139,6 +139,78 @@ def login():
     return render_template('login.html', error=error)
 
 
+def get_active_token():
+    # 優先從環境變數取得
+    token = os.environ.get('TPRIS_TOKEN')
+    if token:
+        return token
+    
+    # 若無，則以當前操作員的帳密動態登入取得
+    account = os.environ.get('TPRIS_ACCOUNT')
+    password = os.environ.get('TPRIS_PASSWORD')
+    if account and password and account != '未設定' and password != '未設定':
+        try:
+            from scraper import login_and_get_token
+            token = login_and_get_token(account, password)
+            os.environ['TPRIS_TOKEN'] = token
+            return token
+        except Exception as e:
+            print(f"[錯誤] 動態登入取得 Token 失敗: {e}")
+    return None
+
+def hospital_check_in(accession_no, is_check_in=True):
+    """向醫院 TPRIS 系統寫回/同步報到或取消報到狀態"""
+    if not accession_no:
+        print("[同步警告] 醫令 AccessionNo 為空，無法寫回醫院系統報到狀態")
+        return False
+        
+    token = get_active_token()
+    if not token:
+        print("[同步警告] 無法取得有效 Token，無法寫回醫院系統報到狀態")
+        return False
+        
+    url = "https://tprisweb.shh.org.tw/exam/CheckIn" if is_check_in else "https://tprisweb.shh.org.tw/exam/CheckInBack"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    if is_check_in:
+        payload = {
+            "AccessionNos": [accession_no],
+            "ChangeState": True,
+            "Marge": False
+        }
+    else:
+        payload = {
+            "AccessionNos": [accession_no],
+            "CheckInBackNote": "",
+            "Marge": False
+        }
+        
+    try:
+        import requests
+        # 關閉 SSL 驗證以防醫院內部網路凭证錯誤
+        response = requests.put(url, headers=headers, json=payload, verify=False, timeout=10)
+        action_name = "報到" if is_check_in else "取消報到"
+        if response.status_code == 200:
+            print(f"[同步成功] 成功將 {accession_no} 的{action_name}狀態寫回醫院 TPRIS 系統！")
+            return True
+        elif response.status_code == 401:
+            # Token 過期，清除並重試一次
+            print("[同步警告] Token 已過期，嘗試重新登入並重試...")
+            os.environ.pop('TPRIS_TOKEN', None)
+            return hospital_check_in(accession_no, is_check_in)
+        else:
+            print(f"[同步失敗] 醫院系統回傳狀態碼: {response.status_code}, 內容: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[同步錯誤] 連線醫院系統寫回報到狀態時發生異常: {e}")
+        return False
+
+
 # 存放目前的請求狀態 (簡易版，不持久化)
 current_requests = {}
 # 存放已經發送過的病患，避免重複出現 (使用 record_no + exam 作為唯一鍵)
@@ -260,6 +332,11 @@ def voice_dispatch():
                     p['checked_in'] = False
                     break
             
+            # 非同步在背景將取消報到狀態同步至醫院 TPRIS 系統
+            accession_no = matched_patient.get('accession_no')
+            if accession_no:
+                threading.Thread(target=lambda: hospital_check_in(accession_no, is_check_in=False), daemon=True).start()
+                
             patients_data = sort_patients(patients_data)
             socketio.emit('patients_updated', patients_data)
             
@@ -282,6 +359,11 @@ def voice_dispatch():
                     p['checked_in'] = True
                     break
             
+            # 非同步在背景將報到狀態同步至醫院 TPRIS 系統
+            accession_no = matched_patient.get('accession_no')
+            if accession_no:
+                threading.Thread(target=lambda: hospital_check_in(accession_no, is_check_in=True), daemon=True).start()
+                
             patients_data = sort_patients(patients_data)
             socketio.emit('patients_updated', patients_data)
             
@@ -411,14 +493,23 @@ def handle_check_in(data):
     checked_in_patients.add(patient_key)
     
     # 在記憶體中更新目前病患狀態
+    accession_no = None
     for p in patients_data:
         p_record = str(p.get('record_no') or '').strip()
         p_exam = str(p.get('exam') or '').strip()
         if p_record == record_no and p_exam == exam:
             p['checked_in'] = True
+            accession_no = p.get('accession_no')
             break
             
     print(f"病患已手動報到: {record_no} (項目: {exam})")
+    
+    # 非同步在背景將報到狀態同步至醫院 TPRIS 系統
+    if accession_no:
+        def do_sync():
+            hospital_check_in(accession_no, is_check_in=True)
+        threading.Thread(target=do_sync, daemon=True).start()
+        
     patients_data = sort_patients(patients_data)
     # 廣播給所有發送端更新畫面
     socketio.emit('patients_updated', patients_data)
@@ -435,14 +526,23 @@ def handle_cancel_check_in(data):
         checked_in_patients.remove(patient_key)
         
     # 在記憶體中更新目前病患狀態
+    accession_no = None
     for p in patients_data:
         p_record = str(p.get('record_no') or '').strip()
         p_exam = str(p.get('exam') or '').strip()
         if p_record == record_no and p_exam == exam:
             p['checked_in'] = False
+            accession_no = p.get('accession_no')
             break
             
     print(f"病患已取消手動報到: {record_no} (項目: {exam})")
+    
+    # 非同步在背景將取消報到狀態同步至醫院 TPRIS 系統
+    if accession_no:
+        def do_sync():
+            hospital_check_in(accession_no, is_check_in=False)
+        threading.Thread(target=do_sync, daemon=True).start()
+        
     patients_data = sort_patients(patients_data)
     # 廣播給所有發送端更新畫面
     socketio.emit('patients_updated', patients_data)

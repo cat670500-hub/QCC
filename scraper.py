@@ -203,6 +203,9 @@ def run_scraper():
                 print(f"[{time.strftime('%H:%M:%S')}] 正在以操作人員 {current_account} 登入醫院系統並取得安全 Token...")
                 token = login_and_get_token(current_account, current_password)
                 print(f"[成功] 操作人員 {current_account} 成功取得安全驗證 Token！")
+            
+            # 共享 Token 供 app.py 執行緒進行寫回操作
+            os.environ['TPRIS_TOKEN'] = token
                 
             # 2. 獲取實時資料
             print(f"[{time.strftime('%H:%M:%S')}] 正在從醫院網路 API 實時撈取今日檢查清單...")
