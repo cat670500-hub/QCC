@@ -181,7 +181,8 @@ def hospital_check_in(accession_no, is_check_in=True):
         payload = {
             "AccessionNos": [accession_no],
             "ChangeState": True,
-            "Marge": False
+            "Marge": False,
+            "RoomNo": "82Portable"
         }
     else:
         payload = {
