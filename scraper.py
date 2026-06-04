@@ -86,8 +86,7 @@ def fetch_live_patients(token):
         "$orderby": "OrderDate desc",
         "orderDateStart": f"{today_str}T00:00:00+08:00",
         "orderDateEnd": f"{today_str}T23:59:59+08:00",
-        "orByDefault": "true",
-        "deskNo": "82Portable"  # 指定 Portable 檢查室代碼
+        "orByDefault": "true"
     }
     
     try:
@@ -104,7 +103,7 @@ def fetch_live_patients(token):
         raise ConnectionError(f"實時 API 連線異常: {e}")
 
 def parse_patients(raw_items):
-    """解析病患清單，將 Portable 檢查室傳回的所有活躍病患納入清單"""
+    """解析病患清單，並依『醫令名稱符合 Chest(AP)Portable』或『床號為重症病房』做聯集篩選"""
     extracted_patients = []
     seen_keys = set()
     
@@ -122,44 +121,52 @@ def parse_patients(raw_items):
             continue
             
         proc_name = str(item.get('ProcedureName', '')).strip()
+        bed = item.get('BedNo', '')
         
-        # 由於已在 API 端點帶入 deskNo="82Portable" 篩選，此處直接接受所有傳回的活躍病患 (例如 KUB 等其他檢查)
-        raw_pid = item.get('PatientId')
-        if raw_pid is None:
-            continue
-        pid = str(raw_pid).strip()
-        if not pid:
-            continue
-            
-        pname = str(item.get('PatientName') or '').strip() or "未知"
-        source = str(item.get('PatientSourceTypeName') or '').strip() or "未知"
-        accession_no = str(item.get('AccessionNo') or '').strip()
-        order_no = str(item.get('OrderNo') or '').strip()
+        # 條件 1：醫令名稱符合 'Chest(AP)Portable'
+        is_chest_portable = (proc_name == 'Chest(AP)Portable')
         
-        raw_bed = item.get('BedNo')
-        bed_str = str(raw_bed).strip() if raw_bed is not None else ""
+        # 條件 2：病床號符合重症病房
+        is_icu = is_critical_care_bed(bed)
         
-        # 排重鍵
-        key = (pid, proc_name)
-        if key not in seen_keys:
-            seen_keys.add(key)
+        # 聯集篩選 (任一符合即呈現)
+        if is_chest_portable or is_icu:
+            raw_pid = item.get('PatientId')
+            if raw_pid is None:
+                continue
+            pid = str(raw_pid).strip()
+            if not pid:
+                continue
+                
+            pname = str(item.get('PatientName') or '').strip() or "未知"
+            source = str(item.get('PatientSourceTypeName') or '').strip() or "未知"
+            accession_no = str(item.get('AccessionNo') or '').strip()
+            order_no = str(item.get('OrderNo') or '').strip()
             
-            # 若醫院端狀態為 21 (櫃台報到) 或 CheckInTime 有時間值，則標記為已報到 (checked_in)
-            raw_check_in_time = item.get('CheckInTime')
-            is_checked_in = (status == '21' or (raw_check_in_time is not None and str(raw_check_in_time).strip() != ""))
+            raw_bed = item.get('BedNo')
+            bed_str = str(raw_bed).strip() if raw_bed is not None else ""
             
-            extracted_patients.append({
-                "name": pname,
-                "record_no": pid,
-                "bed": bed_str if bed_str else "(無病房資料)",
-                "exam": proc_name,
-                "source": source,
-                "accession_no": accession_no,
-                "order_no": order_no,
-                "checked_in": is_checked_in,
-                # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
-                "dispatched": (status == '56')
-            })
+            # 排重鍵
+            key = (pid, proc_name)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                
+                # 若醫院端狀態為 21 (櫃台報到) 或 CheckInTime 有時間值，則標記為已報到 (checked_in)
+                raw_check_in_time = item.get('CheckInTime')
+                is_checked_in = (status == '21' or (raw_check_in_time is not None and str(raw_check_in_time).strip() != ""))
+                
+                extracted_patients.append({
+                    "name": pname,
+                    "record_no": pid,
+                    "bed": bed_str if bed_str else "(無病房資料)",
+                    "exam": proc_name,
+                    "source": source,
+                    "accession_no": accession_no,
+                    "order_no": order_no,
+                    "checked_in": is_checked_in,
+                    # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
+                    "dispatched": (status == '56')
+                })
                 
     return extracted_patients
 
