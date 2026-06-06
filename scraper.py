@@ -223,6 +223,9 @@ def hospital_check_in(token, accession_no, is_check_in=True):
                 return False
         elif response.status_code == 401:
             raise PermissionError("Token 已失效 (401)")
+        elif response.status_code == 500 and ("already being tracked" in response.text or "is already being tracked" in response.text):
+            print(f"[同步警告] 醫院系統回傳 500 (實體追蹤衝突)，單號 {accession_no} 應已於醫院端完成{action_name}！")
+            return True
         else:
             msg = f"HTTP {response.status_code}: {response.text}"
             print(f"[同步失敗] 醫院系統回傳狀態碼: {response.status_code}, 內容: {response.text}")
