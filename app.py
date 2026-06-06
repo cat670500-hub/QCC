@@ -72,8 +72,8 @@ def inject_host_info():
 
 @app.before_request
 def check_auth():
-    # 靜態資源、登入頁面與 API 同步接口不攔截
-    if request.path.startswith('/static/') or request.path == '/login' or request.path == '/api/update_patients' or request.path == '/manifest.json' or request.path == '/sw.js':
+    # 靜態資源、登入頁面與 API 接口不攔截
+    if request.path.startswith('/static/') or request.path.startswith('/api/') or request.path == '/login' or request.path == '/manifest.json' or request.path == '/sw.js':
         return
     if not session.get('authenticated'):
         return redirect(url_for('login'))
@@ -139,77 +139,11 @@ def login():
     return render_template('login.html', error=error)
 
 
-def get_active_token():
-    # 優先從環境變數取得
-    token = os.environ.get('TPRIS_TOKEN')
-    if token:
-        return token
-    
-    # 若無，則以當前操作員的帳密動態登入取得
-    account = os.environ.get('TPRIS_ACCOUNT')
-    password = os.environ.get('TPRIS_PASSWORD')
-    if account and password and account != '未設定' and password != '未設定':
-        try:
-            from scraper import login_and_get_token
-            token = login_and_get_token(account, password)
-            os.environ['TPRIS_TOKEN'] = token
-            return token
-        except Exception as e:
-            print(f"[錯誤] 動態登入取得 Token 失敗: {e}")
-    return None
+# 存放待傳送至醫院系統的報到/取消報到指令
+pending_hospital_check_ins = []
 
-def hospital_check_in(accession_no, is_check_in=True):
-    """向醫院 TPRIS 系統寫回/同步報到或取消報到狀態"""
-    if not accession_no:
-        print("[同步警告] 醫令 AccessionNo 為空，無法寫回醫院系統報到狀態")
-        return False
-        
-    token = get_active_token()
-    if not token:
-        print("[同步警告] 無法取得有效 Token，無法寫回醫院系統報到狀態")
-        return False
-        
-    url = "https://tprisweb.shh.org.tw/exam/CheckIn" if is_check_in else "https://tprisweb.shh.org.tw/exam/CheckInBack"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    if is_check_in:
-        payload = {
-            "AccessionNos": [accession_no],
-            "ChangeState": True,
-            "Marge": False,
-            "RoomNo": "82Portable"
-        }
-    else:
-        payload = {
-            "AccessionNos": [accession_no],
-            "CheckInBackNote": "",
-            "Marge": False
-        }
-        
-    try:
-        import requests
-        # 關閉 SSL 驗證以防醫院內部網路凭证錯誤
-        response = requests.put(url, headers=headers, json=payload, verify=False, timeout=10)
-        action_name = "報到" if is_check_in else "取消報到"
-        if response.status_code == 200:
-            print(f"[同步成功] 成功將 {accession_no} 的{action_name}狀態寫回醫院 TPRIS 系統！")
-            return True
-        elif response.status_code == 401:
-            # Token 過期，清除並重試一次
-            print("[同步警告] Token 已過期，嘗試重新登入並重試...")
-            os.environ.pop('TPRIS_TOKEN', None)
-            return hospital_check_in(accession_no, is_check_in)
-        else:
-            print(f"[同步失敗] 醫院系統回傳狀態碼: {response.status_code}, 內容: {response.text}")
-            return False
-    except Exception as e:
-        print(f"[同步錯誤] 連線醫院系統寫回報到狀態時發生異常: {e}")
-        return False
+# 存放本機代理端的連線 Session ID
+agent_sid = None
 
 
 # 存放目前的請求狀態 (簡易版，不持久化)
@@ -218,6 +152,27 @@ current_requests = {}
 sent_patients = set()
 # 存放已經手動報到過的病患
 checked_in_patients = set()
+
+# 存放確認紀錄的清單 (最新 50 筆)
+confirmed_history = []
+
+def add_to_history(request_id, patient_info):
+    if patient_info:
+        time_str = time.strftime('%H:%M:%S')
+        # 避免重複寫入
+        for h in confirmed_history:
+            if h["id"] == request_id:
+                return
+        confirmed_history.append({
+            "id": request_id,
+            "name": patient_info.get("name"),
+            "record_no": patient_info.get("record_no"),
+            "bed": patient_info.get("bed"),
+            "exam": patient_info.get("exam"),
+            "time": time_str
+        })
+        if len(confirmed_history) > 50:
+            confirmed_history.pop(0)
 
 def sort_patients(patients):
     """排序病患：未報到 (最上端) -> 已報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
@@ -281,6 +236,17 @@ def serve_sw():
 def api_patients():
     return jsonify(patients_data)
 
+@app.route('/api/history')
+def api_history():
+    return jsonify(confirmed_history)
+
+@app.route('/api/pending_check_ins', methods=['GET'])
+def get_pending_check_ins():
+    global pending_hospital_check_ins
+    check_ins = list(pending_hospital_check_ins)
+    pending_hospital_check_ins.clear()
+    return jsonify(check_ins)
+
 @app.route('/api/voice_dispatch', methods=['POST'])
 def voice_dispatch():
     global patients_data
@@ -318,7 +284,10 @@ def voice_dispatch():
     if matched_patient:
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
         matched_exam = str(matched_patient.get('exam', '')).strip()
-        patient_key = f"{matched_record_no}|{matched_exam}"
+        matched_acc = str(matched_patient.get('accession_no', '')).strip()
+        matched_ord = str(matched_patient.get('order_no', '')).strip()
+        matched_req = matched_acc if matched_acc else matched_ord
+        patient_key = f"{matched_record_no}|{matched_exam}|{matched_req}"
         
         # 情況 A：語音要求取消報到
         if "取消報到" in text:
@@ -329,14 +298,27 @@ def voice_dispatch():
             for p in patients_data:
                 p_rec = str(p.get('record_no', '')).strip()
                 p_ex = str(p.get('exam', '')).strip()
-                if f"{p_rec}|{p_ex}" == patient_key:
+                p_acc = str(p.get('accession_no', '')).strip()
+                p_ord = str(p.get('order_no', '')).strip()
+                p_req = p_acc if p_acc else p_ord
+                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                     p['checked_in'] = False
                     break
             
-            # 非同步在背景將取消報到狀態同步至醫院 TPRIS 系統
+            # 將取消報到任務加入待處理佇列
             accession_no = matched_patient.get('accession_no')
             if accession_no:
-                threading.Thread(target=lambda: hospital_check_in(accession_no, is_check_in=False), daemon=True).start()
+                if agent_sid:
+                    print(f"[系統] 語音轉發取消報到請求給本機代理端 (AccessionNo: {accession_no})")
+                    socketio.emit('agent_check_in', {
+                        "accession_no": accession_no,
+                        "is_check_in": False
+                    }, room=agent_sid)
+                else:
+                    pending_hospital_check_ins.append({
+                        "accession_no": accession_no,
+                        "is_check_in": False
+                    })
                 
             patients_data = sort_patients(patients_data)
             socketio.emit('patients_updated', patients_data)
@@ -356,14 +338,27 @@ def voice_dispatch():
             for p in patients_data:
                 p_rec = str(p.get('record_no', '')).strip()
                 p_ex = str(p.get('exam', '')).strip()
-                if f"{p_rec}|{p_ex}" == patient_key:
+                p_acc = str(p.get('accession_no', '')).strip()
+                p_ord = str(p.get('order_no', '')).strip()
+                p_req = p_acc if p_acc else p_ord
+                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                     p['checked_in'] = True
                     break
             
-            # 非同步在背景將報到狀態同步至醫院 TPRIS 系統
+            # 將報到任務加入待處理佇列
             accession_no = matched_patient.get('accession_no')
             if accession_no:
-                threading.Thread(target=lambda: hospital_check_in(accession_no, is_check_in=True), daemon=True).start()
+                if agent_sid:
+                    print(f"[系統] 語音轉發報到請求給本機代理端 (AccessionNo: {accession_no})")
+                    socketio.emit('agent_check_in', {
+                        "accession_no": accession_no,
+                        "is_check_in": True
+                    }, room=agent_sid)
+                else:
+                    pending_hospital_check_ins.append({
+                        "accession_no": accession_no,
+                        "is_check_in": True
+                    })
                 
             patients_data = sort_patients(patients_data)
             socketio.emit('patients_updated', patients_data)
@@ -388,7 +383,10 @@ def voice_dispatch():
             for p in patients_data:
                 p_rec = str(p.get('record_no', '')).strip()
                 p_ex = str(p.get('exam', '')).strip()
-                if f"{p_rec}|{p_ex}" == patient_key:
+                p_acc = str(p.get('accession_no', '')).strip()
+                p_ord = str(p.get('order_no', '')).strip()
+                p_req = p_acc if p_acc else p_ord
+                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                     p['dispatched'] = True
                     break
             patients_data = sort_patients(patients_data)
@@ -396,13 +394,17 @@ def voice_dispatch():
             
             # 廣播新派遣請求給接收端 (Receiver)
             socketio.emit('new_request', {'id': req_id, 'patient': matched_patient})
-            current_requests[req_id] = "waiting"
+            current_requests[req_id] = {
+                "status": "waiting",
+                "patient": matched_patient
+            }
             
             # 4. 分析對話中是否有接受/確認/抵達等肯定的意思
             is_confirm = any(word in text for word in ["接受", "確認", "好的", "收到了", "10分鐘", "十分鐘", "行", "可以", "照"])
             if is_confirm:
-                current_requests[req_id] = "confirmed"
-                socketio.emit('request_confirmed', {'id': req_id})
+                current_requests[req_id]["status"] = "confirmed"
+                add_to_history(req_id, matched_patient)
+                socketio.emit('request_confirmed', {'id': req_id, 'patient': matched_patient})
                 print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
                 
             return jsonify({
@@ -432,7 +434,10 @@ def update_patients():
             p['record_no'] = record_no
             p['exam'] = exam
             
-            patient_key = f"{record_no}|{exam}"
+            acc = str(p.get('accession_no') or '').strip()
+            ord_no = str(p.get('order_no') or '').strip()
+            req_no = acc if acc else ord_no
+            patient_key = f"{record_no}|{exam}|{req_no}"
             # 優先保留醫院端的已報到狀態 (如 status == '21')，或本系統手動/語音報到的狀態
             p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
             p['dispatched'] = p.get('dispatched', False) or (patient_key in sent_patients)
@@ -443,26 +448,130 @@ def update_patients():
         return jsonify({"status": "success", "count": len(patients_data)})
     return jsonify({"status": "error"}), 400
 
+@app.route('/api/sync_errors', methods=['GET'])
+def get_sync_errors():
+    log_file = "sync_errors.log"
+    if not os.path.exists(log_file):
+        return jsonify([])
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        # 回傳最後 100 筆記錄
+        return jsonify(lines[-100:])
+    except Exception as e:
+        return jsonify([f"讀取日誌失敗: {e}"])
+
+@app.route('/api/local_errors', methods=['GET'])
+def get_local_errors():
+    log_file = "check_in_errors.log"
+    if not os.path.exists(log_file):
+        return jsonify([])
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        # 回傳最後 100 筆記錄
+        return jsonify(lines[-100:])
+    except Exception as e:
+        return jsonify([f"讀取日誌失敗: {e}"])
+
+@socketio.on('connect')
+def handle_connect():
+    print(f"[系統] 新客戶端建立 Socket 連線: {request.sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    global agent_sid
+    if request.sid == agent_sid:
+        agent_sid = None
+        print("[系統] 代理端 (本機) 已中斷連線。")
+    else:
+        print(f"[系統] 客戶端中斷連線: {request.sid}")
+
+@socketio.on('register_agent')
+def handle_register_agent():
+    global agent_sid
+    agent_sid = request.sid
+    print(f"[系統] 代理端 (本機) 已成功註冊，連線 ID: {agent_sid}")
+
+def log_server_sync_error(acc_no, action, message):
+    try:
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{time_str}] 單號: {acc_no} | 動作: {action} | 原因: {message}\n"
+        with open("sync_errors.log", "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        print(f"[警告] 寫入伺服器端錯誤日誌檔失敗: {e}")
+
+@socketio.on('agent_check_in_result')
+def handle_agent_check_in_result(data):
+    acc_no = data.get("accession_no")
+    is_check = data.get("is_check_in", True)
+    success = data.get("success", False)
+    msg = data.get("message", "")
+    action = "報到" if is_check else "取消報到"
+    
+    print(f"[系統] 收到代理端回報執行結果: 單號={acc_no}, {action} 成功={success}, 訊息={msg}")
+    
+    if not success and acc_no:
+        log_server_sync_error(acc_no, action, msg)
+        global patients_data
+        target_p = None
+        for p in patients_data:
+            p_acc = str(p.get('accession_no') or '').strip()
+            if p_acc == acc_no:
+                target_p = p
+                p['checked_in'] = not is_check
+                break
+                
+        if target_p:
+            record_no = str(target_p.get('record_no') or '').strip()
+            exam = str(target_p.get('exam') or '').strip()
+            patient_key = f"{record_no}|{exam}|{acc_no}"
+            
+            if is_check:
+                if patient_key in checked_in_patients:
+                    checked_in_patients.remove(patient_key)
+            else:
+                checked_in_patients.add(patient_key)
+                
+            patients_data = sort_patients(patients_data)
+            socketio.emit('patients_updated', patients_data)
+            
+        socketio.emit('agent_sync_error', {
+            "accession_no": acc_no,
+            "action": action,
+            "message": msg
+        })
+
 # 發送端發出請求
 @socketio.on('send_request')
 def handle_request(data):
     global patients_data
     request_id = data.get('id')
     patient_info = data.get('patient')
-    current_requests[request_id] = "waiting"
+    current_requests[request_id] = {
+        "status": "waiting",
+        "patient": patient_info
+    }
     
     if patient_info:
         # 記錄為已發送
         record_no = str(patient_info.get('record_no') or '').strip()
         exam = str(patient_info.get('exam') or '').strip()
-        patient_key = f"{record_no}|{exam}"
+        acc = str(patient_info.get('accession_no') or '').strip()
+        ord_no = str(patient_info.get('order_no') or '').strip()
+        req_no = acc if acc else ord_no
+        patient_key = f"{record_no}|{exam}|{req_no}"
         sent_patients.add(patient_key)
         
         # 不要從全域剔除，改為標記已分派，並發送推播更新所有發送端畫面
         for p in patients_data:
             p_rec = str(p.get('record_no') or '').strip()
             p_ex = str(p.get('exam') or '').strip()
-            if f"{p_rec}|{p_ex}" == patient_key:
+            p_acc = str(p.get('accession_no') or '').strip()
+            p_ord = str(p.get('order_no') or '').strip()
+            p_req = p_acc if p_acc else p_ord
+            if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                 p['dispatched'] = True
                 break
         patients_data = sort_patients(patients_data)
@@ -478,10 +587,20 @@ def handle_request(data):
 def handle_confirm(data):
     request_id = data.get('id')
     if request_id in current_requests:
-        current_requests[request_id] = "confirmed"
+        patient_info = None
+        if isinstance(current_requests[request_id], dict):
+            current_requests[request_id]["status"] = "confirmed"
+            patient_info = current_requests[request_id].get("patient")
+        else:
+            current_requests[request_id] = "confirmed"
+            
         print(f"請求已確認: {request_id}")
-        # 通知發送端
-        emit('request_confirmed', {'id': request_id}, broadcast=True)
+        
+        if patient_info:
+            add_to_history(request_id, patient_info)
+            
+        # 通知發送端，並附帶病患資訊
+        emit('request_confirmed', {'id': request_id, 'patient': patient_info}, broadcast=True)
 
 # 手動報到請求
 @socketio.on('check_in_patient')
@@ -489,27 +608,52 @@ def handle_check_in(data):
     global patients_data
     record_no = str(data.get('record_no') or '').strip()
     exam = str(data.get('exam') or '').strip()
-    patient_key = f"{record_no}|{exam}"
+    acc = str(data.get('accession_no') or '').strip()
+    ord_no = str(data.get('order_no') or '').strip()
+    req_no = acc if acc else ord_no
     
+    patient_key = f"{record_no}|{exam}|{req_no}" if req_no else f"{record_no}|{exam}"
     checked_in_patients.add(patient_key)
     
     # 在記憶體中更新目前病患狀態
-    accession_no = None
+    accession_no = acc if acc else None
     for p in patients_data:
         p_record = str(p.get('record_no') or '').strip()
         p_exam = str(p.get('exam') or '').strip()
+        p_acc = str(p.get('accession_no') or '').strip()
+        p_ord = str(p.get('order_no') or '').strip()
+        
+        match = False
         if p_record == record_no and p_exam == exam:
+            if acc and p_acc and acc == p_acc:
+                match = True
+            elif ord_no and p_ord and ord_no == p_ord:
+                match = True
+            elif not acc and not p_acc and not ord_no and not p_ord:
+                match = True
+            
+        if match:
             p['checked_in'] = True
-            accession_no = p.get('accession_no')
+            if p_acc:
+                accession_no = p_acc
             break
             
-    print(f"病患已手動報到: {record_no} (項目: {exam})")
+    print(f"病患已手動報到: {record_no} (項目: {exam}) 單號: {req_no}")
     
-    # 非同步在背景將報到狀態同步至醫院 TPRIS 系統
+    # 記錄待同步報到狀態至醫院系統的任務
     if accession_no:
-        def do_sync():
-            hospital_check_in(accession_no, is_check_in=True)
-        threading.Thread(target=do_sync, daemon=True).start()
+        if agent_sid:
+            print(f"[系統] 轉發報到請求給本機代理端 (AccessionNo: {accession_no})")
+            socketio.emit('agent_check_in', {
+                "accession_no": accession_no,
+                "is_check_in": True
+            }, room=agent_sid)
+        else:
+            print(f"[系統警告] 代理端不在線，將報到任務寫入佇列等待輪詢...")
+            pending_hospital_check_ins.append({
+                "accession_no": accession_no,
+                "is_check_in": True
+            })
         
     patients_data = sort_patients(patients_data)
     # 廣播給所有發送端更新畫面
@@ -521,28 +665,53 @@ def handle_cancel_check_in(data):
     global patients_data
     record_no = str(data.get('record_no') or '').strip()
     exam = str(data.get('exam') or '').strip()
-    patient_key = f"{record_no}|{exam}"
+    acc = str(data.get('accession_no') or '').strip()
+    ord_no = str(data.get('order_no') or '').strip()
+    req_no = acc if acc else ord_no
     
+    patient_key = f"{record_no}|{exam}|{req_no}" if req_no else f"{record_no}|{exam}"
     if patient_key in checked_in_patients:
         checked_in_patients.remove(patient_key)
         
     # 在記憶體中更新目前病患狀態
-    accession_no = None
+    accession_no = acc if acc else None
     for p in patients_data:
         p_record = str(p.get('record_no') or '').strip()
         p_exam = str(p.get('exam') or '').strip()
+        p_acc = str(p.get('accession_no') or '').strip()
+        p_ord = str(p.get('order_no') or '').strip()
+        
+        match = False
         if p_record == record_no and p_exam == exam:
+            if acc and p_acc and acc == p_acc:
+                match = True
+            elif ord_no and p_ord and ord_no == p_ord:
+                match = True
+            elif not acc and not p_acc and not ord_no and not p_ord:
+                match = True
+            
+        if match:
             p['checked_in'] = False
-            accession_no = p.get('accession_no')
+            if p_acc:
+                accession_no = p_acc
             break
             
-    print(f"病患已取消手動報到: {record_no} (項目: {exam})")
+    print(f"病患已取消手動報到: {record_no} (項目: {exam}) 單號: {req_no}")
     
-    # 非同步在背景將取消報到狀態同步至醫院 TPRIS 系統
+    # 記錄待同步取消報到狀態至醫院系統的任務
     if accession_no:
-        def do_sync():
-            hospital_check_in(accession_no, is_check_in=False)
-        threading.Thread(target=do_sync, daemon=True).start()
+        if agent_sid:
+            print(f"[系統] 轉發取消報到請求給本機代理端 (AccessionNo: {accession_no})")
+            socketio.emit('agent_check_in', {
+                "accession_no": accession_no,
+                "is_check_in": False
+            }, room=agent_sid)
+        else:
+            print(f"[系統警告] 代理端不在線，將取消報到任務寫入佇列等待輪詢...")
+            pending_hospital_check_ins.append({
+                "accession_no": accession_no,
+                "is_check_in": False
+            })
         
     patients_data = sort_patients(patients_data)
     # 廣播給所有發送端更新畫面

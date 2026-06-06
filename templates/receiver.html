@@ -28,7 +28,8 @@
         socket.on('new_request', (data) => {
             const p = data.patient;
             if (p) {
-                const checkKey = p.record_no + '-' + p.exam;
+                const appNoVal = p.accession_no || p.order_no || '';
+                const checkKey = p.record_no + '-' + p.exam + '-' + appNoVal;
                 if (document.querySelector(`.request-box[data-key="${checkKey}"]`)) {
                     return; // 已經存在這筆病患的請求，忽略重複
                 }
@@ -37,14 +38,19 @@
             const reqDiv = document.createElement('div');
             reqDiv.className = 'request-box waiting';
             reqDiv.id = data.id;
-            if (p) reqDiv.setAttribute('data-key', p.record_no + '-' + p.exam);
+            if (p) {
+                const appNoVal = p.accession_no || p.order_no || '';
+                reqDiv.setAttribute('data-key', p.record_no + '-' + p.exam + '-' + appNoVal);
+            }
 
             const textSpan = document.createElement('span');
             let bedDisplay = '';
+            let appNo = '';
             if (p) {
                 bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+                appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
             }
-            const patientText = p ? `<br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}` : '';
+            const patientText = p ? `<br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>` : '';
             textSpan.innerHTML = `<strong>檢查部位: ${p ? p.exam : data.id}</strong>${patientText}`;
             reqDiv.appendChild(textSpan);
 

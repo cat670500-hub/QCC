@@ -261,6 +261,15 @@
             background: var(--success);
         }
 
+        .request-card.checked-in {
+            background: rgba(59, 130, 246, 0.1);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .request-card.checked-in::before {
+            background: #3b82f6;
+        }
+
         .card-header {
             display: flex;
             justify-content: space-between;
@@ -477,6 +486,10 @@
             renderPatients();
         });
 
+        socket.on('agent_sync_error', (data) => {
+            alert(`[同步失敗] 醫院系統 ${data.action} 執行失敗！\n單號: ${data.accession_no}\n原因: ${data.message}`);
+        });
+
         // 當發送端正式發送請求時
         socket.on('new_request', (data) => {
             // 這個請求會更新 activePatients (透過 app.py 廣播 update)
@@ -510,23 +523,41 @@
 
             pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
-                card.className = 'request-card waiting';
-                card.id = `CARD-${p.record_no}`;
+                card.className = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
+                const uniqueReqNo = p.accession_no || p.order_no || '';
+                card.id = `CARD-${p.record_no}-${uniqueReqNo}`;
                 
                 const isER = p.bed === '急診';
                 const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
                 
+                const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
+                const badgeText = p.checked_in ? 
+                    '<span style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">✅ 已報到</span>' : 
+                    '<span style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">🔘 未報到</span>';
+
                 card.innerHTML = `
                     <div class="card-header">
-                        <div class="exam-title">${p.exam}</div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                            <div class="exam-title">${p.exam}</div>
+                            <div>${badgeText}</div>
+                        </div>
                         <div class="${bedBadgeClass}">${p.bed || '無床號'}</div>
                     </div>
                     <div class="patient-info">
                         <span>姓名: <strong>${p.name}</strong></span>
                         <span>病歷號: <strong>${p.record_no}</strong></span>
+                        <span>來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
                     </div>
-                    <div class="action-container">
-                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}')">
+                    <div class="action-container" style="display: flex; gap: 10px; width: 100%;">
+                        ${p.checked_in ? 
+                            `<button class="btn" style="background: var(--danger); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', false)">
+                                ❌ 取消報到
+                             </button>` : 
+                            `<button class="btn" style="background: var(--primary); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', true)">
+                                📋 報到
+                             </button>`
+                        }
+                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
                             ✔️ 接受
                         </button>
                     </div>
@@ -536,10 +567,11 @@
         }
 
         // 手動確認
-        function manualConfirm(recordNo) {
+        function manualConfirm(recordNo, accessionNo, orderNo) {
             // 新增一個動態的 REQ ID 以對應 socketio 流程
             const reqId = 'REQ-MOB-' + Date.now();
-            const p = activePatients.find(x => x.record_no === recordNo);
+            const p = activePatients.find(x => x.record_no === recordNo && 
+                ((x.accession_no || '') === (accessionNo || '') && (x.order_no || '') === (orderNo || '')));
             if (!p) return;
             
             socket.emit('send_request', { id: reqId, patient: p });
@@ -548,7 +580,8 @@
             }, 200);
 
             // 更新 UI
-            const card = document.getElementById(`CARD-${recordNo}`);
+            const uniqueReqNo = accessionNo || orderNo || '';
+            const card = document.getElementById(`CARD-${recordNo}-${uniqueReqNo}`);
             if (card) {
                 card.className = 'request-card confirmed';
                 card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
@@ -559,6 +592,17 @@
                     card.remove();
                     fetchPatients();
                 }, 3000);
+            }
+        }
+
+        // 手動報到/取消報到
+        function manualCheckIn(recordNo, exam, accessionNo, orderNo, isCheckIn) {
+            if (isCheckIn) {
+                socket.emit('check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
+                speakNotification(`已辦理報到`);
+            } else {
+                socket.emit('cancel_check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
+                speakNotification(`已取消報到`);
             }
         }
 
@@ -655,11 +699,42 @@
         function analyzeVoiceCommand(text) {
             console.log("語音指令分析中:", text);
             
+            // 1. 先做姓名或病歷號模糊比對
+            let matchedPatient = null;
+            for (let p of activePatients) {
+                if (text.includes(p.name) || text.includes(p.record_no)) {
+                    matchedPatient = p;
+                    break;
+                }
+            }
+            
+            if (matchedPatient) {
+                const accNo = matchedPatient.accession_no || '';
+                const ordNo = matchedPatient.order_no || '';
+                if (text.includes("取消報到")) {
+                    manualCheckIn(matchedPatient.record_no, matchedPatient.exam, accNo, ordNo, false);
+                    return;
+                } else if (text.includes("報到")) {
+                    manualCheckIn(matchedPatient.record_no, matchedPatient.exam, accNo, ordNo, true);
+                    return;
+                } else if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
+                    manualConfirm(matchedPatient.record_no, accNo, ordNo);
+                    return;
+                } else {
+                    // 如果只說了名字，預設為接受
+                    manualConfirm(matchedPatient.record_no, accNo, ordNo);
+                    return;
+                }
+            }
+            
+            // 2. 如果沒匹配到特定病患，但有通用指令
             // 指令一：接受 / 確認 / 收到了
             if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
-                if (activePatients.length > 0) {
+                const pendingPatients = activePatients.filter(p => !p.dispatched);
+                if (pendingPatients.length > 0) {
                     // 接受第一筆 (最上面)
-                    manualConfirm(activePatients[0].record_no, 0);
+                    const p = pendingPatients[0];
+                    manualConfirm(p.record_no, p.accession_no || '', p.order_no || '');
                 } else {
                     speakNotification("目前沒有待處理的派遣單");
                 }
@@ -668,8 +743,9 @@
 
             // 指令二：十分鐘到 / 10分鐘到
             if (text.includes("十分鐘") || text.includes("10分鐘") || text.includes("10分")) {
-                if (activePatients.length > 0) {
-                    const p = activePatients[0];
+                const pendingPatients = activePatients.filter(p => !p.dispatched);
+                if (pendingPatients.length > 0) {
+                    const p = pendingPatients[0];
                     const reqId = 'REQ-MOB-' + Date.now();
                     
                     // 發送並確認
@@ -679,7 +755,8 @@
                     }, 200);
 
                     // 視覺回饋
-                    const card = document.getElementById(`CARD-${p.record_no}`);
+                    const uniqueReqNo = p.accession_no || p.order_no || '';
+                    const card = document.getElementById(`CARD-${p.record_no}-${uniqueReqNo}`);
                     if (card) {
                         card.className = 'request-card confirmed';
                         card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已回報 10 分鐘後抵達</div>';
@@ -702,15 +779,6 @@
                 fetchPatients();
                 speakNotification("已為您重新整理清單");
                 return;
-            }
-            
-            // 指令四：特定病患名字 (姓名模糊搜尋)
-            for (let i = 0; i < activePatients.length; i++) {
-                const p = activePatients[i];
-                if (text.includes(p.name)) {
-                    manualConfirm(p.record_no);
-                    return;
-                }
             }
         }
     </script>

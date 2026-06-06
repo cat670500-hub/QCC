@@ -67,11 +67,11 @@
                     {% if not p.dispatched %}
                     <div style="display: flex; gap: 8px; margin-top: 10px; width: 100%;">
                         {% if p.checked_in %}
-                            <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" onclick="cancelCheckInPatient(this)">取消報到</button>
+                            <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="cancelCheckInPatient(this)">取消報到</button>
                         {% else %}
-                            <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" onclick="checkInPatient(this)">報到</button>
+                            <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="checkInPatient(this)">報到</button>
                         {% endif %}
-                        <button class="sendBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" onclick="sendRequest(this)">發送</button>
+                        <button class="sendBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="sendRequest(this)">發送</button>
                     </div>
                     {% endif %}
                 </div>
@@ -80,16 +80,33 @@
         </div>
         <div id="requestsList" class="status" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px;"></div>
         <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 20px 0;">
-        <h3 style="font-size: 1.1rem; color: #444; margin-bottom: 10px;">確認紀錄清單</h3>
-        <ul id="historyList"
-            style="text-align: left; font-size: 0.9rem; color: #555; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0;">
-        </ul>
+        <div style="display: flex; gap: 20px; text-align: left; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <h3 style="font-size: 1.1rem; color: #444; margin-bottom: 10px;">確認紀錄清單</h3>
+                <ul id="historyList"
+                    style="font-size: 0.9rem; color: #555; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0;">
+                </ul>
+            </div>
+            <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
+                <h3 style="font-size: 1.1rem; color: #ef4444; margin-bottom: 10px;">⚠️ 醫院同步失敗日誌</h3>
+                <ul id="syncErrorList"
+                    style="font-size: 0.9rem; color: #ef4444; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
+                </ul>
+            </div>
+            <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
+                <h3 style="font-size: 1.1rem; color: #dc2626; margin-bottom: 10px;">⚠️ 本機報到失敗日誌</h3>
+                <ul id="localErrorList"
+                    style="font-size: 0.9rem; color: #dc2626; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
+                </ul>
+            </div>
+        </div>
     </div>
 
     <script>
         const socket = io();
         let requestCount = 0;
         let currentPatients = {{ patients | tojson }} || [];
+        const checkInErrors = {};
 
         function sendRequest(btn) {
             requestCount++;
@@ -97,7 +114,9 @@
                 name: btn.getAttribute('data-name'),
                 record_no: btn.getAttribute('data-record'),
                 bed: btn.getAttribute('data-bed'),
-                exam: btn.getAttribute('data-exam')
+                exam: btn.getAttribute('data-exam'),
+                accession_no: btn.getAttribute('data-accession') || '',
+                order_no: btn.getAttribute('data-order') || ''
             };
             const reqId = 'REQ-' + requestCount;
 
@@ -108,6 +127,7 @@
             reqDiv.setAttribute('data-name', patient.name);
             reqDiv.setAttribute('data-bed', patient.bed);
             reqDiv.setAttribute('data-record', patient.record_no);
+            reqDiv.setAttribute('data-exam', patient.exam);
 
             const textSpan = document.createElement('span');
             const bedDisplay = patient.bed === '急診' ? `<span style="color: red; font-weight: bold;">${patient.bed}</span>` : patient.bed;
@@ -130,21 +150,28 @@
         socket.on('request_confirmed', (data) => {
             const reqDiv = document.getElementById(data.id);
             let displayNameAndBed = `請求 ${data.id}`;
+            const p = data.patient;
             
             if (reqDiv) {
-                const pName = reqDiv.getAttribute('data-name') || '';
-                const pBed = reqDiv.getAttribute('data-bed') || '';
-                const pRecord = reqDiv.getAttribute('data-record') || '';
+                const pName = reqDiv.getAttribute('data-name') || (p ? p.name : '');
+                const pBed = reqDiv.getAttribute('data-bed') || (p ? p.bed : '');
+                const pRecord = reqDiv.getAttribute('data-record') || (p ? p.record_no : '');
                 if (pName || pBed || pRecord) {
                     displayNameAndBed = `${pName} (${pRecord}) - ${pBed}`;
                 }
                 reqDiv.className = 'request-box confirmed';
-                reqDiv.querySelector('span').innerText = `${displayNameAndBed} - 接受！`;
+                
+                const bedDisplay = pBed === '急診' ? `<span style="color: red; font-weight: bold;">${pBed}</span>` : pBed;
+                const examText = reqDiv.getAttribute('data-exam') || (p ? p.exam : '');
+                reqDiv.querySelector('span').innerHTML = `<strong>[已接受]</strong><br><strong>檢查部位: ${examText}</strong><br>病患: ${pName} (${pRecord})<br>床號: ${bedDisplay}`;
                 
                 // 變成淡藍色框(已確認)後，30秒後清除
                 setTimeout(() => {
                     if (reqDiv.parentNode) reqDiv.remove();
                 }, 30000);
+            } else if (p) {
+                // 如果在 sender 端沒有對應的 waiting 框 (可能由行動端/語音自動接受)
+                displayNameAndBed = `${p.name} (${p.record_no}) - ${p.bed}`;
             }
 
             // 記錄到清單
@@ -221,6 +248,23 @@
             headerDiv.appendChild(badge);
             reqDiv.appendChild(headerDiv);
             
+            // 檢查是否有同步失敗的錯誤訊息
+            const syncError = checkInErrors[p.accession_no];
+            if (syncError && !p.checked_in) {
+                const errDiv = document.createElement('div');
+                errDiv.style.color = '#ef4444';
+                errDiv.style.fontSize = '0.82rem';
+                errDiv.style.marginTop = '6px';
+                errDiv.style.fontWeight = 'bold';
+                errDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+                errDiv.style.padding = '4px 8px';
+                errDiv.style.borderRadius = '4px';
+                errDiv.style.width = '100%';
+                errDiv.style.boxSizing = 'border-box';
+                errDiv.innerText = `⚠️ 同步失敗: ${syncError}`;
+                reqDiv.appendChild(errDiv);
+            }
+            
             // 只有未分派的病患才顯示按鈕
             if (!p.dispatched) {
                 const btnGroup = document.createElement('div');
@@ -240,6 +284,8 @@
                 checkInBtn.style.transition = 'all 0.2s';
                 checkInBtn.setAttribute('data-record', p.record_no);
                 checkInBtn.setAttribute('data-exam', p.exam);
+                checkInBtn.setAttribute('data-accession', p.accession_no || '');
+                checkInBtn.setAttribute('data-order', p.order_no || '');
                 
                 if (p.checked_in) {
                     checkInBtn.style.background = '#ef4444';
@@ -269,6 +315,8 @@
                 sendBtn.setAttribute('data-record', p.record_no);
                 sendBtn.setAttribute('data-bed', p.bed);
                 sendBtn.setAttribute('data-exam', p.exam);
+                sendBtn.setAttribute('data-accession', p.accession_no || '');
+                sendBtn.setAttribute('data-order', p.order_no || '');
                 sendBtn.innerText = '發送';
                 sendBtn.onclick = function() { sendRequest(this); };
                 btnGroup.appendChild(sendBtn);
@@ -283,29 +331,39 @@
         function checkInPatient(btn) {
             const recordNo = btn.getAttribute('data-record');
             const exam = btn.getAttribute('data-exam');
+            const accessionNo = btn.getAttribute('data-accession') || '';
+            const orderNo = btn.getAttribute('data-order') || '';
             
             btn.innerText = '⏳ 處理中...';
             btn.disabled = true;
             
             // 透過 Socket 傳遞報到事件
-            socket.emit('check_in_patient', { record_no: recordNo, exam: exam });
+            socket.emit('check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
         }
 
         // 取消報到觸發
         function cancelCheckInPatient(btn) {
             const recordNo = btn.getAttribute('data-record');
             const exam = btn.getAttribute('data-exam');
+            const accessionNo = btn.getAttribute('data-accession') || '';
+            const orderNo = btn.getAttribute('data-order') || '';
             
             btn.innerText = '⏳ 處理中...';
             btn.disabled = true;
             
             // 透過 Socket 傳遞取消報到事件
-            socket.emit('cancel_check_in_patient', { record_no: recordNo, exam: exam });
+            socket.emit('cancel_check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
         }
 
         // 監聽來自伺服器的名單更新 (當爬蟲抓到新資料或有人點擊報到時觸發)
         socket.on('patients_updated', (data) => {
             currentPatients = data;
+            // 當名單更新時，若病患已成功報到或已分派，清除其對應的同步失敗狀態
+            data.forEach(p => {
+                if (p.checked_in || p.dispatched) {
+                    delete checkInErrors[p.accession_no];
+                }
+            });
             const listDiv = document.getElementById('patientListDiv');
             listDiv.innerHTML = ''; // 清除舊清單
             data.forEach(p => {
@@ -313,6 +371,25 @@
             });
             filterPatients(); // 重新套用快速搜尋過濾
             console.log("已接收最新病患名單，畫面已同步更新！");
+        });
+
+        socket.on('agent_sync_error', (data) => {
+            // 記錄同步失敗的原因
+            if (data.accession_no) {
+                checkInErrors[data.accession_no] = data.message;
+            }
+            // 立即重新渲染病患清單，以在卡片上顯示錯誤訊息
+            const listDiv = document.getElementById('patientListDiv');
+            listDiv.innerHTML = '';
+            currentPatients.forEach(p => {
+                listDiv.appendChild(renderPatientCard(p));
+            });
+            filterPatients();
+            // 重新載入同步失敗日誌與本機錯誤日誌
+            fetchSyncErrors();
+            fetchLocalErrors();
+            // 彈出錯誤提示
+            alert(`[同步失敗] 醫院系統 ${data.action} 執行失敗！\n單號: ${data.accession_no}\n原因: ${data.message}`);
         });
 
         // 向伺服器要求一次最新名單
@@ -452,16 +529,18 @@
             
             const recordNo = matchedPatient.record_no;
             const exam = matchedPatient.exam;
+            const accessionNo = matchedPatient.accession_no || '';
+            const orderNo = matchedPatient.order_no || '';
             
             // 情況 A：取消報到
             if (text.includes("取消報到")) {
                 document.getElementById('voiceStatus').innerText = `語音執行：取消 ${matchedPatient.name} 報到`;
-                socket.emit('cancel_check_in_patient', { record_no: recordNo, exam: exam });
+                socket.emit('cancel_check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
             }
             // 情況 B：報到
             else if (text.includes("報到")) {
                 document.getElementById('voiceStatus').innerText = `語音執行：辦理 ${matchedPatient.name} 報到`;
-                socket.emit('check_in_patient', { record_no: recordNo, exam: exam });
+                socket.emit('check_in_patient', { record_no: recordNo, exam: exam, accession_no: accessionNo, order_no: orderNo });
             }
             // 情況 C：發送 / 派遣 / 傳送
             else if (text.includes("發送") || text.includes("派遣") || text.includes("送單") || text.includes("傳送")) {
@@ -479,6 +558,8 @@
                 mockBtn.setAttribute('data-record', matchedPatient.record_no);
                 mockBtn.setAttribute('data-bed', matchedPatient.bed);
                 mockBtn.setAttribute('data-exam', matchedPatient.exam);
+                mockBtn.setAttribute('data-accession', matchedPatient.accession_no || '');
+                mockBtn.setAttribute('data-order', matchedPatient.order_no || '');
                 
                 sendRequest(mockBtn);
             } else {
@@ -504,6 +585,77 @@
                 }
             });
         }
+
+        // 載入歷史確認紀錄
+        function fetchHistory() {
+            fetch('/api/history')
+                .then(res => res.json())
+                .then(data => {
+                    const historyList = document.getElementById('historyList');
+                    historyList.innerHTML = '';
+                    data.forEach(h => {
+                        const li = document.createElement('li');
+                        li.innerText = `[${h.time}] ${h.name} (${h.record_no}) - ${h.bed} 回覆：接受`;
+                        li.style.marginBottom = '5px';
+                        historyList.appendChild(li);
+                    });
+                    historyList.scrollTop = historyList.scrollHeight;
+                })
+                .catch(err => console.error("獲取歷史紀錄失敗:", err));
+        }
+
+        // 載入同步失敗紀錄
+        function fetchSyncErrors() {
+            fetch('/api/sync_errors')
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById('syncErrorList');
+                    list.innerHTML = '';
+                    if (data.length === 0) {
+                        const li = document.createElement('li');
+                        li.innerText = '目前無同步失敗紀錄';
+                        li.style.color = '#10b981';
+                        list.appendChild(li);
+                        return;
+                    }
+                    data.forEach(line => {
+                        const li = document.createElement('li');
+                        li.innerText = line.trim();
+                        list.appendChild(li);
+                    });
+                    list.scrollTop = list.scrollHeight;
+                })
+                .catch(err => console.error("獲取錯誤日誌失敗:", err));
+        }
+
+        // 載入本機報到失敗紀錄
+        function fetchLocalErrors() {
+            fetch('/api/local_errors')
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById('localErrorList');
+                    list.innerHTML = '';
+                    if (data.length === 0) {
+                        const li = document.createElement('li');
+                        li.innerText = '目前無本機報到失敗紀錄';
+                        li.style.color = '#10b981';
+                        list.appendChild(li);
+                        return;
+                    }
+                    data.forEach(line => {
+                        const li = document.createElement('li');
+                        li.innerText = line.trim();
+                        list.appendChild(li);
+                    });
+                    list.scrollTop = list.scrollHeight;
+                })
+                .catch(err => console.error("獲取本機錯誤日誌失敗:", err));
+        }
+
+        // 初始化
+        fetchHistory();
+        fetchSyncErrors();
+        fetchLocalErrors();
     </script>
 </body>
 
