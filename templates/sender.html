@@ -80,6 +80,10 @@
         </div>
         <div id="requestsList" class="status" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px;"></div>
         <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 20px 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 style="margin: 0; font-size: 1.25rem; color: #334155; display: flex; align-items: center; gap: 6px;">📊 紀錄與錯誤監控日誌</h2>
+            <button onclick="clearErrorLogs()" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">🧹 清除所有錯誤日誌</button>
+        </div>
         <div style="display: flex; gap: 20px; text-align: left; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 250px;">
                 <h3 style="font-size: 1.1rem; color: #444; margin-bottom: 10px;">確認紀錄清單</h3>
@@ -650,6 +654,23 @@
                     list.scrollTop = list.scrollHeight;
                 })
                 .catch(err => console.error("獲取本機錯誤日誌失敗:", err));
+        }
+
+        // 清除所有錯誤日誌紀錄
+        function clearErrorLogs() {
+            if (!confirm("確定要清除伺服器與本機的所有錯誤日誌紀錄嗎？")) return;
+            fetch('/api/clear_errors', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        fetchSyncErrors();
+                        fetchLocalErrors();
+                        alert("已成功清除所有錯誤日誌！");
+                    } else {
+                        alert("清除失敗: " + data.message);
+                    }
+                })
+                .catch(err => console.error("清除日誌發生錯誤:", err));
         }
 
         // 初始化

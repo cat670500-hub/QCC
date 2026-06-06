@@ -474,6 +474,17 @@ def get_local_errors():
     except Exception as e:
         return jsonify([f"讀取日誌失敗: {e}"])
 
+@app.route('/api/clear_errors', methods=['POST'])
+def clear_errors():
+    for log_file in ["sync_errors.log", "check_in_errors.log"]:
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, "w", encoding="utf-8") as f:
+                    f.truncate(0)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
 @socketio.on('connect')
 def handle_connect():
     print(f"[系統] 新客戶端建立 Socket 連線: {request.sid}")
