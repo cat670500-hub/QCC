@@ -55,6 +55,9 @@
                             檢查部位: {{ p.exam }}<br>
                             床號: {% if p.bed == '急診' %}<span style="color: red; font-weight: bold;">{{ p.bed }}</span>{% else %}{{ p.bed }}{% endif %}<br>
                             <span style="font-size: 0.85rem; color: #64748b;">來源: {{ p.source }} | 申請單號: {{ app_no }}</span>
+                            {% if p.local_dispatched and p.dispatch_time %}
+                            <br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 {{ p.dispatch_time }} 發送通知</span>
+                            {% endif %}
                         </span>
                         {% if p.dispatched %}
                             <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
@@ -71,7 +74,7 @@
                         {% else %}
                             <button class="checkInBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-record="{{ p.record_no }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="checkInPatient(this)">報到</button>
                         {% endif %}
-                        <button class="sendBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="sendRequest(this)">發送</button>
+                        <button class="sendBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;" data-name="{{ p.name }}" data-record="{{ p.record_no }}" data-bed="{{ p.bed }}" data-exam="{{ p.exam }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" onclick="sendRequest(this)">{% if p.local_dispatched %}再次發送{% else %}發送{% endif %}</button>
                     </div>
                     {% endif %}
                 </div>
@@ -142,13 +145,9 @@
             // Emit to server
             socket.emit('send_request', { id: reqId, patient: patient });
             
-            // 發送後隱藏按鈕，避免重複發送
-            const parentBox = btn.closest('.request-box');
-            if (parentBox) {
-                parentBox.remove();
-            } else {
-                btn.style.display = 'none';
-            }
+            // 不要移除卡片，將按鈕設為發送中，之後會由 socket 傳來更新重新渲染
+            btn.innerText = '⏳ 發送中...';
+            btn.disabled = true;
         }
 
         socket.on('request_confirmed', (data) => {
@@ -222,7 +221,12 @@
             // 申請單號去尾 5 碼邏輯
             const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
             
-            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>`;
+            let localDispatchText = "";
+            if (p.local_dispatched && p.dispatch_time) {
+                localDispatchText = `<br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 ${p.dispatch_time} 發送通知</span>`;
+            }
+
+            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>${localDispatchText}`;
             headerDiv.appendChild(textSpan);
             
             // 狀態徽章
@@ -321,7 +325,11 @@
                 sendBtn.setAttribute('data-exam', p.exam);
                 sendBtn.setAttribute('data-accession', p.accession_no || '');
                 sendBtn.setAttribute('data-order', p.order_no || '');
-                sendBtn.innerText = '發送';
+                if (p.local_dispatched) {
+                    sendBtn.innerText = '再次發送';
+                } else {
+                    sendBtn.innerText = '發送';
+                }
                 sendBtn.onclick = function() { sendRequest(this); };
                 btnGroup.appendChild(sendBtn);
                 

@@ -152,6 +152,8 @@ current_requests = {}
 sent_patients = set()
 # 存放已經手動報到過的病患
 checked_in_patients = set()
+# 存放本地發送時間，使用 record_no + exam + req_no 作為唯一鍵
+dispatch_times = {}
 
 # 存放確認紀錄的清單 (最新 50 筆)
 confirmed_history = []
@@ -174,12 +176,35 @@ def add_to_history(request_id, patient_info):
         if len(confirmed_history) > 50:
             confirmed_history.pop(0)
 
+def log_dispatch(patient_info, time_str):
+    try:
+        date_str = time.strftime("%Y-%m-%d")
+        log_file = f"dispatch_{date_str}.log"
+        time_stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        name = patient_info.get("name", "未知")
+        record_no = patient_info.get("record_no", "未知")
+        exam = patient_info.get("exam", "未知")
+        bed = patient_info.get("bed", "未知")
+        log_line = f"[{time_stamp}] 病患: {name} ({record_no}) | 檢查: {exam} | 床號: {bed} | 已發送通知\n"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_line)
+        print(f"[日誌] 寫入發送日誌: {log_line.strip()}")
+    except Exception as e:
+        print(f"[警告] 寫入發送日誌失敗: {e}")
+
 def sort_patients(patients):
-    """排序病患：未報到 (最上端) -> 已報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
+    """排序病患：已報到 (最上端) -> 未報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
     # 穩定排序：先依單號降序 (新單在上)
     patients_by_date = sorted(patients, key=lambda x: x.get('order_no', ''), reverse=True)
-    # 再依狀態升序 (0: 未報到, 1: 已報到, 2: 已分派)
-    return sorted(patients_by_date, key=lambda x: 2 if x.get('dispatched') else (1 if x.get('checked_in') else 0))
+    # 狀態優先級：已報到 (0) -> 未報到 (1) -> 已分派 (2)
+    def get_status_priority(p):
+        if p.get('dispatched'):
+            return 2
+        elif p.get('checked_in'):
+            return 0
+        else:
+            return 1
+    return sorted(patients_by_date, key=get_status_priority)
 
 @app.route('/')
 def index():
@@ -378,8 +403,16 @@ def voice_dispatch():
             # 記錄為已發送，避免重複出現在待發送清單中
             sent_patients.add(patient_key)
             
-            # 不要從全域剔除，改為標記已分派，並推播更新發送端畫面
-            matched_patient['dispatched'] = True
+            # 記錄發送時間
+            now_str = time.strftime('%H:%M')
+            dispatch_times[patient_key] = now_str
+            
+            # 寫入日誌檔
+            log_dispatch(matched_patient, now_str)
+            
+            # 標記為本地已發送，不改變 dispatched，維持在原本狀態與排序
+            matched_patient['local_dispatched'] = True
+            matched_patient['dispatch_time'] = now_str
             for p in patients_data:
                 p_rec = str(p.get('record_no', '')).strip()
                 p_ex = str(p.get('exam', '')).strip()
@@ -387,7 +420,8 @@ def voice_dispatch():
                 p_ord = str(p.get('order_no', '')).strip()
                 p_req = p_acc if p_acc else p_ord
                 if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                    p['dispatched'] = True
+                    p['local_dispatched'] = True
+                    p['dispatch_time'] = now_str
                     break
             patients_data = sort_patients(patients_data)
             socketio.emit('patients_updated', patients_data)
@@ -440,7 +474,10 @@ def update_patients():
             patient_key = f"{record_no}|{exam}|{req_no}"
             # 優先保留醫院端的已報到狀態 (如 status == '21')，或本系統手動/語音報到的狀態
             p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
-            p['dispatched'] = p.get('dispatched', False) or (patient_key in sent_patients)
+            # 只有醫院端真正分派才設為 dispatched。本地發送使用 local_dispatched 追蹤。
+            p['dispatched'] = p.get('dispatched', False)
+            p['local_dispatched'] = (patient_key in sent_patients)
+            p['dispatch_time'] = dispatch_times.get(patient_key, "")
             filtered_data.append(p)
                 
         patients_data = sort_patients(filtered_data)
@@ -575,7 +612,12 @@ def handle_request(data):
         patient_key = f"{record_no}|{exam}|{req_no}"
         sent_patients.add(patient_key)
         
-        # 不要從全域剔除，改為標記已分派，並發送推播更新所有發送端畫面
+        # 記錄發送時間與寫入日誌檔
+        now_str = time.strftime('%H:%M')
+        dispatch_times[patient_key] = now_str
+        log_dispatch(patient_info, now_str)
+        
+        # 標記為本地已發送，不改變 dispatched，維持在原本狀態與排序
         for p in patients_data:
             p_rec = str(p.get('record_no') or '').strip()
             p_ex = str(p.get('exam') or '').strip()
@@ -583,7 +625,8 @@ def handle_request(data):
             p_ord = str(p.get('order_no') or '').strip()
             p_req = p_acc if p_acc else p_ord
             if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                p['dispatched'] = True
+                p['local_dispatched'] = True
+                p['dispatch_time'] = now_str
                 break
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
