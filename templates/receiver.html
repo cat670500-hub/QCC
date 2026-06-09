@@ -19,39 +19,83 @@
                 <span style="font-size: 0.75rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
             {% endif %}
         </div>
+
+        <!-- 接收病房設定 -->
+        <div style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; text-align: left; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1;">
+                <label for="wardFilter" style="font-size: 0.9rem; font-weight: bold; color: #475569; white-space: nowrap;">⚙️ 接收病房設定：</label>
+                <input type="text" id="wardFilter" placeholder="例如：11B, 6C (空白表示接收全部)" style="flex-grow: 1; max-width: 400px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none; font-size: 0.9rem;" oninput="saveWardFilter()">
+            </div>
+        </div>
+
         <div id="incomingRequests" class="status"></div>
     </div>
 
     <script>
         const socket = io();
 
+        // 載入 localStorage 中的病房設定
+        function loadWardFilter() {
+            const filter = localStorage.getItem('receiver_ward_filter');
+            if (filter !== null) {
+                document.getElementById('wardFilter').value = filter;
+            }
+        }
+
+        // 儲存病房設定至 localStorage
+        function saveWardFilter() {
+            const filter = document.getElementById('wardFilter').value;
+            localStorage.setItem('receiver_ward_filter', filter);
+        }
+
+        // 初始化載入
+        loadWardFilter();
+
         socket.on('new_request', (data) => {
             const p = data.patient;
-            if (p) {
-                const appNoVal = p.accession_no || p.order_no || '';
-                const checkKey = p.record_no + '-' + p.exam + '-' + appNoVal;
-                if (document.querySelector(`.request-box[data-key="${checkKey}"]`)) {
-                    return; // 已經存在這筆病患的請求，忽略重複
+            if (!p) return;
+
+            // 1. 病房過濾邏輯 (多病房逗號分割)
+            const filterVal = document.getElementById('wardFilter').value.trim();
+            if (filterVal) {
+                const allowedWards = filterVal.split(',').map(w => w.trim().toLowerCase()).filter(w => w !== '');
+                if (allowedWards.length > 0) {
+                    const bed = (p.bed || '').trim().toLowerCase();
+                    const isAllowed = allowedWards.some(ward => bed.includes(ward));
+                    if (!isAllowed) {
+                        console.log(`[過濾] 病患床號 ${p.bed} 不在允許清單 ${filterVal} 中，忽略通知`);
+                        return; // 被過濾，不呈顯
+                    }
                 }
             }
 
-            const reqDiv = document.createElement('div');
-            reqDiv.className = 'request-box waiting';
-            reqDiv.id = data.id;
-            if (p) {
-                const appNoVal = p.accession_no || p.order_no || '';
-                reqDiv.setAttribute('data-key', p.record_no + '-' + p.exam + '-' + appNoVal);
+            const appNoVal = p.accession_no || p.order_no || '';
+            const checkKey = p.record_no + '-' + p.exam + '-' + appNoVal;
+            if (document.querySelector(`.request-box[data-key="${checkKey}"]`)) {
+                return; // 已經存在這筆病患的請求，忽略重複
             }
 
-            const textSpan = document.createElement('span');
-            let bedDisplay = '';
-            let appNo = '';
-            if (p) {
-                bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
-                appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
+            const reqDiv = document.createElement('div');
+            reqDiv.id = data.id;
+            reqDiv.setAttribute('data-key', checkKey);
+
+            // 2. 來源為「急診」之卡片增加紅色粗框醒示
+            let className = 'request-box waiting';
+            if (p.source === '急診') {
+                className += ' er-card';
             }
-            const patientText = p ? `<br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>` : '';
-            textSpan.innerHTML = `<strong>檢查部位: ${p ? p.exam : data.id}</strong>${patientText}`;
+            reqDiv.className = className;
+
+            const textSpan = document.createElement('span');
+            const bedDisplay = p.bed === '急診' ? `<span style="color: red; font-weight: bold;">${p.bed}</span>` : p.bed;
+            const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
+            
+            // 3. 自訂通知文字顯示
+            const customMsgText = data.custom_message ? `<div style="font-size: 1.1rem; color: #1e3a8a; font-weight: bold; margin-bottom: 8px;">📢 ${data.custom_message}</div>` : '';
+            
+            const patientText = `<br>病患: ${p.name} (${p.record_no})<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>`;
+            
+            textSpan.innerHTML = `${customMsgText}<strong>檢查部位: ${p.exam}</strong>${patientText}`;
             reqDiv.appendChild(textSpan);
 
             const confirmBtn = document.createElement('button');
@@ -61,6 +105,9 @@
             confirmBtn.onclick = () => {
                 socket.emit('confirm_request', { id: data.id });
                 reqDiv.className = 'request-box confirmed';
+                if (p.source === '急診') {
+                    reqDiv.className += ' er-card';
+                }
                 confirmBtn.remove();
                 // 變成淡藍色框(已確認)後，1分鐘(60秒)後清除
                 setTimeout(() => {
@@ -70,7 +117,6 @@
             reqDiv.appendChild(confirmBtn);
 
             document.getElementById('incomingRequests').appendChild(reqDiv);
-
         });
     </script>
 </body>

@@ -237,3 +237,8 @@ button:disabled {
     75% { transform: translateX(5px); }
 }
 
+.er-card {
+    border: 3px solid #ef4444 !important;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4) !important;
+}
+

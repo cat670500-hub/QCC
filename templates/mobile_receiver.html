@@ -382,6 +382,11 @@
             color: var(--text-muted);
             line-height: 1.4;
         }
+
+        .request-card.er-card {
+            border: 3px solid var(--danger) !important;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.4) !important;
+        }
     </style>
 </head>
 
@@ -399,6 +404,12 @@
         {% if session.operator_account %}
             <span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 {{ session.operator_account }}</span>
         {% endif %}
+    </div>
+
+    <!-- 接收病房設定 -->
+    <div style="background: var(--panel-bg); backdrop-filter: blur(10px); border: 1px solid var(--border-glow); padding: 15px; border-radius: 16px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <label for="wardFilter" style="font-size: 0.9rem; font-weight: bold; color: var(--text-main); display: flex; align-items: center; gap: 6px;">⚙️ 接收病房設定</label>
+        <input type="text" id="wardFilter" placeholder="例如：11B, 6C (空白表示接收全部)" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';" oninput="saveWardFilter()">
     </div>
 
     <!-- 語音控制與回饋面版 -->
@@ -434,6 +445,35 @@
     <script>
         const socket = io();
         let activePatients = [];
+
+        // 載入 localStorage 中的病房設定
+        function loadWardFilter() {
+            const filter = localStorage.getItem('receiver_ward_filter');
+            if (filter !== null) {
+                const input = document.getElementById('wardFilter');
+                if (input) input.value = filter;
+            }
+        }
+
+        // 儲存病房設定至 localStorage 並立即重新過濾渲染
+        function saveWardFilter() {
+            const filter = document.getElementById('wardFilter').value;
+            localStorage.setItem('receiver_ward_filter', filter);
+            renderPatients();
+        }
+
+        // 檢查病患是否符合過濾設定
+        function isPatientAllowed(p) {
+            const filterVal = document.getElementById('wardFilter') ? document.getElementById('wardFilter').value.trim() : '';
+            if (filterVal) {
+                const allowedWards = filterVal.split(',').map(w => w.trim().toLowerCase()).filter(w => w !== '');
+                if (allowedWards.length > 0) {
+                    const bed = (p.bed || '').trim().toLowerCase();
+                    return allowedWards.some(ward => bed.includes(ward));
+                }
+            }
+            return true;
+        }
         
         // 語音識別設定
         let recognition;
@@ -441,6 +481,7 @@
         
         // 系統初始化
         window.addEventListener('load', () => {
+            loadWardFilter();
             initSpeechRecognition();
             registerServiceWorker();
         });
@@ -478,7 +519,9 @@
                 const newPatients = data.filter(p => !oldKeys.includes(p.record_no));
                 
                 newPatients.forEach(p => {
-                    speakNotification(`收到新派遣，病房床號：${p.bed || '未知'}，病患：${p.name}`);
+                    if (isPatientAllowed(p)) {
+                        speakNotification(`收到新派遣，病房床號：${p.bed || '未知'}，病患：${p.name}`);
+                    }
                 });
             }
             
@@ -513,8 +556,8 @@
             const container = document.getElementById('incomingRequests');
             container.innerHTML = '';
 
-            // 僅顯示未分派的病患
-            const pendingPatients = activePatients.filter(p => !p.dispatched);
+            // 僅顯示未分派的病患且符合過濾設定
+            const pendingPatients = activePatients.filter(p => !p.dispatched && isPatientAllowed(p));
 
             if (pendingPatients.length === 0) {
                 container.innerHTML = '<div class="no-data">目前無待處理的派遣單</div>';
@@ -523,7 +566,11 @@
 
             pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
-                card.className = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
+                let cardClass = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
+                if (p.source === '急診') {
+                    cardClass += ' er-card';
+                }
+                card.className = cardClass;
                 const uniqueReqNo = p.accession_no || p.order_no || '';
                 card.id = `CARD-${p.record_no}-${uniqueReqNo}`;
                 
@@ -583,7 +630,11 @@
             const uniqueReqNo = accessionNo || orderNo || '';
             const card = document.getElementById(`CARD-${recordNo}-${uniqueReqNo}`);
             if (card) {
-                card.className = 'request-card confirmed';
+                let cardClass = 'request-card confirmed';
+                if (p.source === '急診') {
+                    cardClass += ' er-card';
+                }
+                card.className = cardClass;
                 card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
                 
                 speakNotification(`已接受${p.name}的派遣`);

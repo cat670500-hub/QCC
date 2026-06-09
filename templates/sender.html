@@ -26,6 +26,17 @@
             <span style="color: #0ea5e9; font-weight: 600;">📱 智慧型手機請點選右側，安裝為「語音控制行動端 App」！</span>
             <a href="/mobile" target="_blank" style="background: #0ea5e9; color: white; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);">前往行動端</a>
         </div>
+
+        <!-- 全區設定區塊 -->
+        <div style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); padding: 15px 20px; border-radius: 15px; margin-bottom: 20px; text-align: left; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+            <h3 style="margin: 0 0 10px 0; font-size: 1.05rem; color: #1e293b; display: flex; align-items: center; gap: 6px;">⚙️ 全區設定</h3>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label for="customMsgInput" style="font-size: 0.9rem; font-weight: 600; color: #475569;">發送顯示通知文字：</label>
+                <input type="text" id="customMsgInput" value="{{ custom_message }}" placeholder="例如：請至 11 號檢查室檢查" style="flex-grow: 1; min-width: 250px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none; font-size: 0.9rem; transition: all 0.3s ease; width: 100%;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59, 130, 246, 0.15)';" onblur="this.style.borderColor='rgba(0,0,0,0.12)'; this.style.boxShadow='none';">
+                <button id="saveSettingsBtn" onclick="saveGlobalSettings()" style="background: #10b981; padding: 8px 16px; font-size: 0.9rem; font-weight: bold; border-radius: 8px;">儲存設定</button>
+            </div>
+        </div>
+
         <div class="glass-panel">
             <h2>待發送清單</h2>
             <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap;">
@@ -47,8 +58,9 @@
             <div id="patientListDiv" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; max-height: 480px; overflow-y: auto; padding: 10px;">
                 {% for p in patients %}
                 {% set status_class = 'status-dispatched' if p.dispatched else ('status-checked-in' if p.checked_in else 'status-unchecked-in') %}
+                {% set er_class = ' er-card' if p.source == '急診' else '' %}
                 {% set app_no = p.accession_no[:-5] if p.accession_no and p.accession_no|length > 5 else p.order_no %}
-                <div class="request-box {{ status_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
+                <div class="request-box {{ status_class }}{{ er_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
                         <span>
                             <strong>病患: {{ p.name }} ({{ p.record_no }})</strong><br>
@@ -81,7 +93,6 @@
                 {% endfor %}
             </div>
         </div>
-        <div id="requestsList" class="status" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px;"></div>
         <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 20px 0;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h2 style="margin: 0; font-size: 1.25rem; color: #334155; display: flex; align-items: center; gap: 6px;">📊 紀錄與錯誤監控日誌</h2>
@@ -127,23 +138,11 @@
             };
             const reqId = 'REQ-' + requestCount;
 
-            // Add to UI as waiting
-            const reqDiv = document.createElement('div');
-            reqDiv.className = 'request-box waiting';
-            reqDiv.id = reqId;
-            reqDiv.setAttribute('data-name', patient.name);
-            reqDiv.setAttribute('data-bed', patient.bed);
-            reqDiv.setAttribute('data-record', patient.record_no);
-            reqDiv.setAttribute('data-exam', patient.exam);
-
-            const textSpan = document.createElement('span');
-            const bedDisplay = patient.bed === '急診' ? `<span style="color: red; font-weight: bold;">${patient.bed}</span>` : patient.bed;
-            textSpan.innerHTML = `<strong>[等待中] 發送給接收端</strong><br><strong>檢查部位: ${patient.exam}</strong><br>病患: ${patient.name} (${patient.record_no})<br>床號: ${bedDisplay}`;
-            reqDiv.appendChild(textSpan);
-            document.getElementById('requestsList').appendChild(reqDiv);
+            const customMsgInput = document.getElementById('customMsgInput');
+            const customMsg = customMsgInput ? customMsgInput.value.trim() : '';
 
             // Emit to server
-            socket.emit('send_request', { id: reqId, patient: patient });
+            socket.emit('send_request', { id: reqId, patient: patient, custom_message: customMsg });
             
             // 不要移除卡片，將按鈕設為發送中，之後會由 socket 傳來更新重新渲染
             btn.innerText = '⏳ 發送中...';
@@ -151,29 +150,10 @@
         }
 
         socket.on('request_confirmed', (data) => {
-            const reqDiv = document.getElementById(data.id);
             let displayNameAndBed = `請求 ${data.id}`;
             const p = data.patient;
             
-            if (reqDiv) {
-                const pName = reqDiv.getAttribute('data-name') || (p ? p.name : '');
-                const pBed = reqDiv.getAttribute('data-bed') || (p ? p.bed : '');
-                const pRecord = reqDiv.getAttribute('data-record') || (p ? p.record_no : '');
-                if (pName || pBed || pRecord) {
-                    displayNameAndBed = `${pName} (${pRecord}) - ${pBed}`;
-                }
-                reqDiv.className = 'request-box confirmed';
-                
-                const bedDisplay = pBed === '急診' ? `<span style="color: red; font-weight: bold;">${pBed}</span>` : pBed;
-                const examText = reqDiv.getAttribute('data-exam') || (p ? p.exam : '');
-                reqDiv.querySelector('span').innerHTML = `<strong>[已接受]</strong><br><strong>檢查部位: ${examText}</strong><br>病患: ${pName} (${pRecord})<br>床號: ${bedDisplay}`;
-                
-                // 變成淡藍色框(已確認)後，30秒後清除
-                setTimeout(() => {
-                    if (reqDiv.parentNode) reqDiv.remove();
-                }, 30000);
-            } else if (p) {
-                // 如果在 sender 端沒有對應的 waiting 框 (可能由行動端/語音自動接受)
+            if (p) {
                 displayNameAndBed = `${p.name} (${p.record_no}) - ${p.bed}`;
             }
 
@@ -201,13 +181,18 @@
             reqDiv.setAttribute('data-name', p.name);
             
             // 決定狀態樣式與背景顏色
+            let statusClass = 'request-box';
             if (p.dispatched) {
-                reqDiv.className = 'request-box status-dispatched';
+                statusClass += ' status-dispatched';
             } else if (p.checked_in) {
-                reqDiv.className = 'request-box status-checked-in';
+                statusClass += ' status-checked-in';
             } else {
-                reqDiv.className = 'request-box status-unchecked-in';
+                statusClass += ' status-unchecked-in';
             }
+            if (p.source === '急診') {
+                statusClass += ' er-card';
+            }
+            reqDiv.className = statusClass;
             
             const headerDiv = document.createElement('div');
             headerDiv.style.display = 'flex';
@@ -679,6 +664,42 @@
                     }
                 })
                 .catch(err => console.error("清除日誌發生錯誤:", err));
+        }
+
+        // 儲存全區設定通知文字
+        function saveGlobalSettings() {
+            const btn = document.getElementById('saveSettingsBtn');
+            const customMsg = document.getElementById('customMsgInput').value.trim();
+            btn.innerText = '⏳ 儲存中...';
+            btn.disabled = true;
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ custom_message: customMsg })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    btn.innerText = '✅ 儲存成功';
+                    setTimeout(() => {
+                        btn.innerText = '儲存設定';
+                        btn.disabled = false;
+                    }, 1500);
+                } else {
+                    alert('儲存設定失敗！');
+                    btn.innerText = '儲存設定';
+                    btn.disabled = false;
+                }
+            })
+            .catch(err => {
+                console.error('儲存設定失敗:', err);
+                alert('網路錯誤，儲存設定失敗！');
+                btn.innerText = '儲存設定';
+                btn.disabled = false;
+            });
         }
 
         // 初始化

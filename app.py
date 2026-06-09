@@ -5,6 +5,7 @@ import time
 import re
 import webbrowser
 import socket
+import json
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit
 
@@ -155,6 +156,35 @@ checked_in_patients = set()
 # 存放本地發送時間，使用 record_no + exam + req_no 作為唯一鍵
 dispatch_times = {}
 
+# 系統設定持久化與自訂通知文字
+SETTINGS_FILE = "settings.json"
+system_settings = {"custom_message": ""}
+
+def load_settings():
+    global system_settings
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                system_settings = json.load(f)
+            print(f"[系統] 已成功載入設定檔: {system_settings}")
+        else:
+            save_settings(system_settings)
+    except Exception as e:
+        print(f"[警告] 載入設定檔 {SETTINGS_FILE} 失敗: {e}")
+
+def save_settings(settings):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=4)
+        print(f"[系統] 已儲存設定檔: {settings}")
+    except Exception as e:
+        print(f"[警告] 儲存設定檔 {SETTINGS_FILE} 失敗: {e}")
+
+load_settings()
+
+# 存放每個病患發送時的自訂通知文字
+dispatch_messages = {}
+
 # 存放確認紀錄的清單 (最新 50 筆)
 confirmed_history = []
 
@@ -236,7 +266,7 @@ patients_data = []
 
 @app.route('/sender')
 def sender():
-    return render_template('sender.html', patients=patients_data)
+    return render_template('sender.html', patients=patients_data, custom_message=system_settings.get('custom_message', ''))
 
 @app.route('/receiver')
 def receiver():
@@ -256,6 +286,16 @@ def serve_sw():
     response.headers['Content-Type'] = 'application/javascript'
     response.headers['Service-Worker-Allowed'] = '/'
     return response
+
+@app.route('/api/settings', methods=['GET', 'POST'])
+def api_settings():
+    global system_settings
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        system_settings['custom_message'] = data.get('custom_message', '').strip()
+        save_settings(system_settings)
+        return jsonify({"status": "success"})
+    return jsonify(system_settings)
 
 @app.route('/api/patients')
 def api_patients():
@@ -478,6 +518,7 @@ def update_patients():
             p['dispatched'] = p.get('dispatched', False)
             p['local_dispatched'] = (patient_key in sent_patients)
             p['dispatch_time'] = dispatch_times.get(patient_key, "")
+            p['custom_message'] = dispatch_messages.get(patient_key, "")
             filtered_data.append(p)
                 
         patients_data = sort_patients(filtered_data)
@@ -602,6 +643,10 @@ def handle_request(data):
         "patient": patient_info
     }
     
+    custom_message = data.get('custom_message', '').strip()
+    if not custom_message:
+        custom_message = system_settings.get('custom_message', '')
+    
     if patient_info:
         # 記錄為已發送
         record_no = str(patient_info.get('record_no') or '').strip()
@@ -612,9 +657,10 @@ def handle_request(data):
         patient_key = f"{record_no}|{exam}|{req_no}"
         sent_patients.add(patient_key)
         
-        # 記錄發送時間與寫入日誌檔
+        # 記錄發送時間與自訂通知文字，並寫入日誌檔
         now_str = time.strftime('%H:%M')
         dispatch_times[patient_key] = now_str
+        dispatch_messages[patient_key] = custom_message
         log_dispatch(patient_info, now_str)
         
         # 標記為本地已發送，不改變 dispatched，維持在原本狀態與排序
@@ -627,6 +673,7 @@ def handle_request(data):
             if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                 p['local_dispatched'] = True
                 p['dispatch_time'] = now_str
+                p['custom_message'] = custom_message
                 break
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
@@ -634,7 +681,7 @@ def handle_request(data):
     patient_name = patient_info.get('name') if patient_info else 'Unknown'
     print(f"收到請求: {request_id} (病患: {patient_name})")
     # 推播給接收端
-    emit('new_request', {'id': request_id, 'patient': patient_info}, broadcast=True)
+    emit('new_request', {'id': request_id, 'patient': patient_info, 'custom_message': custom_message}, broadcast=True)
 
 # 接收端按下確認
 @socketio.on('confirm_request')
