@@ -70,14 +70,22 @@
                             {% if p.local_dispatched and p.dispatch_time %}
                             <br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 {{ p.dispatch_time }} 發送通知</span>
                             {% endif %}
+                            {% if p.confirmed %}
+                            <br><span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold;">✅ 接收端已回覆接受</span>
+                            {% endif %}
                         </span>
-                        {% if p.dispatched %}
-                            <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
-                        {% elif p.checked_in %}
-                            <span class="checked-in-badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">✅ 已報到</span>
-                        {% else %}
-                            <span class="checked-in-badge" style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">🔘 未報到</span>
-                        {% endif %}
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            {% if p.dispatched %}
+                                <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
+                            {% elif p.checked_in %}
+                                <span class="checked-in-badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">✅ 已報到</span>
+                            {% else %}
+                                <span class="checked-in-badge" style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">🔘 未報到</span>
+                            {% endif %}
+                            {% if p.confirmed %}
+                                <span class="confirmed-badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📥 已回覆</span>
+                            {% endif %}
+                        </div>
                     </div>
                     {% if not p.dispatched %}
                     <div style="display: flex; gap: 8px; margin-top: 10px; width: 100%;">
@@ -210,9 +218,21 @@
             if (p.local_dispatched && p.dispatch_time) {
                 localDispatchText = `<br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 ${p.dispatch_time} 發送通知</span>`;
             }
+            
+            let confirmedText = "";
+            if (p.confirmed) {
+                confirmedText = `<br><span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold;">✅ 接收端已回覆接受</span>`;
+            }
 
-            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>${localDispatchText}`;
+            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>${localDispatchText}${confirmedText}`;
             headerDiv.appendChild(textSpan);
+            
+            // 右側狀態與回覆徽章容器
+            const badgeContainer = document.createElement('div');
+            badgeContainer.style.display = 'flex';
+            badgeContainer.style.flexDirection = 'column';
+            badgeContainer.style.alignItems = 'flex-end';
+            badgeContainer.style.gap = '5px';
             
             // 狀態徽章
             const badge = document.createElement('span');
@@ -238,7 +258,26 @@
                 badge.style.color = '#64748b';
                 badge.innerText = '🔘 未報到';
             }
-            headerDiv.appendChild(badge);
+            badgeContainer.appendChild(badge);
+
+            // 確認/回覆徽章
+            if (p.confirmed) {
+                const confirmedBadge = document.createElement('span');
+                confirmedBadge.className = 'confirmed-badge';
+                confirmedBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                confirmedBadge.style.color = '#10b981';
+                confirmedBadge.style.padding = '4px 8px';
+                confirmedBadge.style.borderRadius = '6px';
+                confirmedBadge.style.fontSize = '0.8rem';
+                confirmedBadge.style.fontWeight = 'bold';
+                confirmedBadge.style.display = 'flex';
+                confirmedBadge.style.alignItems = 'center';
+                confirmedBadge.style.gap = '4px';
+                confirmedBadge.innerText = '📥 已回覆';
+                badgeContainer.appendChild(confirmedBadge);
+            }
+            
+            headerDiv.appendChild(badgeContainer);
             reqDiv.appendChild(headerDiv);
             
             // 檢查是否有同步失敗的錯誤訊息

@@ -539,6 +539,32 @@
             fetchPatients();
         });
 
+        // 監聽其它端點的回覆確認，同步更新此端卡片狀態與語音提示
+        socket.on('request_confirmed', (data) => {
+            const p = data.patient;
+            if (!p) return;
+            const uniqueReqNo = p.accession_no || p.order_no || '';
+            const card = document.getElementById(`CARD-${p.record_no}-${uniqueReqNo}`);
+            if (card && !card.classList.contains('confirmed')) {
+                let cardClass = 'request-card confirmed';
+                if (p.source === '急診') {
+                    cardClass += ' er-card';
+                }
+                card.className = cardClass;
+                const actionContainer = card.querySelector('.action-container');
+                if (actionContainer) {
+                    actionContainer.innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
+                }
+                
+                speakNotification(`已接受${p.name}的派遣`);
+                
+                setTimeout(() => {
+                    card.remove();
+                    fetchPatients();
+                }, 3000);
+            }
+        });
+
         function fetchPatients() {
             fetch('/api/patients')
                 .then(res => res.json())
@@ -556,8 +582,8 @@
             const container = document.getElementById('incomingRequests');
             container.innerHTML = '';
 
-            // 僅顯示未分派的病患且符合過濾設定
-            const pendingPatients = activePatients.filter(p => !p.dispatched && isPatientAllowed(p));
+            // 僅顯示未分派且未確認的病患且符合過濾設定
+            const pendingPatients = activePatients.filter(p => !p.dispatched && !p.confirmed && isPatientAllowed(p));
 
             if (pendingPatients.length === 0) {
                 container.innerHTML = '<div class="no-data">目前無待處理的派遣單</div>';

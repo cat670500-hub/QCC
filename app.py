@@ -153,6 +153,8 @@ current_requests = {}
 sent_patients = set()
 # 存放已經手動報到過的病患
 checked_in_patients = set()
+# 存放已經回覆/確認過的病患
+confirmed_patients = set()
 # 存放本地發送時間，使用 record_no + exam + req_no 作為唯一鍵
 dispatch_times = {}
 
@@ -189,7 +191,28 @@ dispatch_messages = {}
 confirmed_history = []
 
 def add_to_history(request_id, patient_info):
+    global patients_data
     if patient_info:
+        # 記錄至已確認集合
+        record_no = str(patient_info.get('record_no') or '').strip()
+        exam = str(patient_info.get('exam') or '').strip()
+        acc = str(patient_info.get('accession_no') or '').strip()
+        ord_no = str(patient_info.get('order_no') or '').strip()
+        req_no = acc if acc else ord_no
+        patient_key = f"{record_no}|{exam}|{req_no}"
+        confirmed_patients.add(patient_key)
+        
+        # 同步更新當前 patients_data 的確認狀態
+        for p in patients_data:
+            p_rec = str(p.get('record_no') or '').strip()
+            p_ex = str(p.get('exam') or '').strip()
+            p_acc = str(p.get('accession_no') or '').strip()
+            p_ord = str(p.get('order_no') or '').strip()
+            p_req = p_acc if p_acc else p_ord
+            if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
+                p['confirmed'] = True
+                break
+
         time_str = time.strftime('%H:%M:%S')
         # 避免重複寫入
         for h in confirmed_history:
@@ -479,6 +502,7 @@ def voice_dispatch():
                 current_requests[req_id]["status"] = "confirmed"
                 add_to_history(req_id, matched_patient)
                 socketio.emit('request_confirmed', {'id': req_id, 'patient': matched_patient})
+                socketio.emit('patients_updated', patients_data)
                 print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
                 
             return jsonify({
@@ -514,6 +538,8 @@ def update_patients():
             patient_key = f"{record_no}|{exam}|{req_no}"
             # 優先保留醫院端的已報到狀態 (如 status == '21')，或本系統手動/語音報到的狀態
             p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
+            # 優先保留確認/回覆狀態
+            p['confirmed'] = p.get('confirmed', False) or (patient_key in confirmed_patients)
             # 只有醫院端真正分派才設為 dispatched。本地發送使用 local_dispatched 追蹤。
             p['dispatched'] = p.get('dispatched', False)
             p['local_dispatched'] = (patient_key in sent_patients)
@@ -702,6 +728,8 @@ def handle_confirm(data):
             
         # 通知發送端，並附帶病患資訊
         emit('request_confirmed', {'id': request_id, 'patient': patient_info}, broadcast=True)
+        # 廣播更新後的病患清單，使所有接收端/發送端同步更新狀態
+        socketio.emit('patients_updated', patients_data)
 
 # 手動報到請求
 @socketio.on('check_in_patient')

@@ -123,6 +123,36 @@
 
             document.getElementById('incomingRequests').appendChild(reqDiv);
         });
+
+        // 監聽其它端點的回覆確認，同步更新此端卡片狀態與文字
+        socket.on('request_confirmed', (data) => {
+            const reqId = data.id;
+            const reqDiv = document.getElementById(reqId);
+            if (reqDiv && !reqDiv.classList.contains('confirmed')) {
+                reqDiv.className = 'request-box confirmed';
+                const p = data.patient;
+                if (p && p.source === '急診') {
+                    reqDiv.className += ' er-card';
+                }
+                const confirmBtn = reqDiv.querySelector('button');
+                if (confirmBtn) {
+                    confirmBtn.remove();
+                }
+                
+                const timeString = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+                const textSpan = reqDiv.querySelector('span');
+                if (textSpan) {
+                    if (!textSpan.innerHTML.includes('回覆接受')) {
+                        textSpan.innerHTML += `<br><span style="color: #0369a1; font-weight: bold; font-size: 0.95rem; display: inline-block; margin-top: 5px;">✅ 已於 ${timeString} 回覆接受</span>`;
+                    }
+                }
+                
+                // 1分鐘後移除卡片
+                setTimeout(() => {
+                    if (reqDiv.parentNode) reqDiv.remove();
+                }, 60000);
+            }
+        });
     </script>
 </body>
 
