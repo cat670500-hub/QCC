@@ -109,6 +109,11 @@
                     reqDiv.className += ' er-card';
                 }
                 confirmBtn.remove();
+                
+                // 取得當前時間並在卡片中顯示
+                const timeString = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+                textSpan.innerHTML += `<br><span style="color: #0369a1; font-weight: bold; font-size: 0.95rem; display: inline-block; margin-top: 5px;">✅ 已於 ${timeString} 回覆接受</span>`;
+                
                 // 變成淡藍色框(已確認)後，1分鐘(60秒)後清除
                 setTimeout(() => {
                     if (reqDiv.parentNode) reqDiv.remove();
