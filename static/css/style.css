@@ -238,7 +238,7 @@ button:disabled {
 }
 
 .er-card {
-    border: 3px solid #ef4444 !important;
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4) !important;
+    background-color: #fef2f2 !important;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08) !important;
 }
 
