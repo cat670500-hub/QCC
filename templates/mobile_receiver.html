@@ -412,6 +412,15 @@
         <input type="text" id="wardFilter" placeholder="例如：11B, 6C (空白表示接收全部)" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';" oninput="saveWardFilter()">
     </div>
 
+    <!-- 搜尋與重整區塊 -->
+    <div style="background: var(--panel-bg); backdrop-filter: blur(10px); border: 1px solid var(--border-glow); padding: 15px; border-radius: 16px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <label style="font-size: 0.9rem; font-weight: bold; color: var(--text-main); display: flex; align-items: center; gap: 6px;">🔍 快速篩選與重整</label>
+            <button id="refreshBtn" onclick="manualRefresh()" style="background: var(--primary); border: none; border-radius: 10px; padding: 6px 14px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: bold; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">🔄 重新整理</button>
+        </div>
+        <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入病歷號或姓名進行快速搜尋..." style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';">
+    </div>
+
     <!-- 語音控制與回饋面版 -->
     <div class="voice-control-panel">
         <div class="mic-container">
@@ -599,6 +608,8 @@
                 card.className = cardClass;
                 const uniqueReqNo = p.accession_no || p.order_no || '';
                 card.id = `CARD-${p.record_no}-${uniqueReqNo}`;
+                card.setAttribute('data-record', p.record_no);
+                card.setAttribute('data-name', p.name);
                 
                 const isER = p.bed === '急診';
                 const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
@@ -638,6 +649,11 @@
                 `;
                 container.appendChild(card);
             });
+            
+            // 重新套用快速搜尋過濾
+            if (document.getElementById('searchInput')) {
+                filterPatients();
+            }
         }
 
         // 手動發送派遣
@@ -660,6 +676,37 @@
                 }
                 speakNotification(`已發送${p.name}的派遣通知`);
             }
+        }
+
+        // 手動重新整理清單
+        function manualRefresh() {
+            fetchPatients();
+            const btn = document.getElementById('refreshBtn');
+            if (btn) {
+                btn.innerText = '✅ 已更新！';
+                btn.disabled = true;
+                setTimeout(() => {
+                    btn.innerText = '🔄 重新整理';
+                    btn.disabled = false;
+                }, 1500);
+            }
+        }
+
+        // 快速篩選病歷號與姓名
+        function filterPatients() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const cards = document.querySelectorAll('#incomingRequests .request-card');
+            
+            cards.forEach(card => {
+                const recordNo = card.getAttribute('data-record') || '';
+                const name = card.getAttribute('data-name') || '';
+                
+                if (recordNo.toLowerCase().includes(query) || name.toLowerCase().includes(query)) {
+                    card.style.display = ''; // 顯示符合條件的卡片
+                } else {
+                    card.style.display = 'none'; // 隱藏不符合的卡片
+                }
+            });
         }
 
         // 手動確認
