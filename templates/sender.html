@@ -27,15 +27,7 @@
             <a href="/mobile" target="_blank" style="background: #0ea5e9; color: white; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);">前往行動端</a>
         </div>
 
-        <!-- 全區設定區塊 -->
-        <div style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); padding: 15px 20px; border-radius: 15px; margin-bottom: 20px; text-align: left; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
-            <h3 style="margin: 0 0 10px 0; font-size: 1.05rem; color: #1e293b; display: flex; align-items: center; gap: 6px;">⚙️ 全區設定</h3>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <label for="customMsgInput" style="font-size: 0.9rem; font-weight: 600; color: #475569;">發送顯示通知文字：</label>
-                <input type="text" id="customMsgInput" value="{{ custom_message }}" placeholder="例如：請至 11 號檢查室檢查" style="flex-grow: 1; min-width: 250px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none; font-size: 0.9rem; transition: all 0.3s ease; width: 100%;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59, 130, 246, 0.15)';" onblur="this.style.borderColor='rgba(0,0,0,0.12)'; this.style.boxShadow='none';">
-                <button id="saveSettingsBtn" onclick="saveGlobalSettings()" style="background: #10b981; padding: 8px 16px; font-size: 0.9rem; font-weight: bold; border-radius: 8px;">儲存設定</button>
-            </div>
-        </div>
+
 
         <div class="glass-panel">
             <h2>待發送清單</h2>
@@ -705,41 +697,7 @@
                 .catch(err => console.error("清除日誌發生錯誤:", err));
         }
 
-        // 儲存全區設定通知文字
-        function saveGlobalSettings() {
-            const btn = document.getElementById('saveSettingsBtn');
-            const customMsg = document.getElementById('customMsgInput').value.trim();
-            btn.innerText = '⏳ 儲存中...';
-            btn.disabled = true;
-            
-            fetch('/api/settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ custom_message: customMsg })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    btn.innerText = '✅ 儲存成功';
-                    setTimeout(() => {
-                        btn.innerText = '儲存設定';
-                        btn.disabled = false;
-                    }, 1500);
-                } else {
-                    alert('儲存設定失敗！');
-                    btn.innerText = '儲存設定';
-                    btn.disabled = false;
-                }
-            })
-            .catch(err => {
-                console.error('儲存設定失敗:', err);
-                alert('網路錯誤，儲存設定失敗！');
-                btn.innerText = '儲存設定';
-                btn.disabled = false;
-            });
-        }
+
 
         // 初始化
         fetchHistory();
