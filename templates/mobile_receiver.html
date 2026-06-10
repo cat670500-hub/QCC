@@ -620,6 +620,7 @@
                         <span>姓名: <strong>${p.name}</strong></span>
                         <span>病歷號: <strong>${p.record_no}</strong></span>
                         <span>來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
+                        ${p.local_dispatched && p.dispatch_time ? `<span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 4px;">📢 已於 ${p.dispatch_time} 發送通知</span>` : ''}
                     </div>
                     <div class="action-container" style="display: flex; gap: 10px; width: 100%;">
                         ${p.checked_in ? 
@@ -630,13 +631,35 @@
                                 📋 報到
                              </button>`
                         }
-                        <button class="btn btn-success" onclick="manualConfirm('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
-                            ✔️ 發送
+                        <button class="btn btn-success" onclick="manualSend('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
+                            ${p.local_dispatched ? '✔️ 再次發送' : '✔️ 發送'}
                         </button>
                     </div>
                 `;
                 container.appendChild(card);
             });
+        }
+
+        // 手動發送派遣
+        function manualSend(recordNo, accessionNo, orderNo) {
+            const reqId = 'REQ-MOB-' + Date.now();
+            const p = activePatients.find(x => x.record_no === recordNo && 
+                ((x.accession_no || '') === (accessionNo || '') && (x.order_no || '') === (orderNo || '')));
+            if (!p) return;
+            
+            socket.emit('send_request', { id: reqId, patient: p });
+
+            // 視覺回饋
+            const uniqueReqNo = accessionNo || orderNo || '';
+            const card = document.getElementById(`CARD-${recordNo}-${uniqueReqNo}`);
+            if (card) {
+                const sendBtn = card.querySelector('.btn-success');
+                if (sendBtn) {
+                    sendBtn.innerText = '⏳ 發送中...';
+                    sendBtn.disabled = true;
+                }
+                speakNotification(`已發送${p.name}的派遣通知`);
+            }
         }
 
         // 手動確認
@@ -794,18 +817,33 @@
                 } else if (text.includes("報到")) {
                     manualCheckIn(matchedPatient.record_no, matchedPatient.exam, accNo, ordNo, true);
                     return;
+                } else if (text.includes("發送") || text.includes("派遣") || text.includes("送單") || text.includes("傳送")) {
+                    manualSend(matchedPatient.record_no, accNo, ordNo);
+                    return;
                 } else if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
                     manualConfirm(matchedPatient.record_no, accNo, ordNo);
                     return;
                 } else {
-                    // 如果只說了名字，預設為接受
-                    manualConfirm(matchedPatient.record_no, accNo, ordNo);
+                    // 如果只說了名字，預設為發送
+                    manualSend(matchedPatient.record_no, accNo, ordNo);
                     return;
                 }
             }
             
             // 2. 如果沒匹配到特定病患，但有通用指令
-            // 指令一：接受 / 確認 / 收到了
+            // 指令一：發送 / 派遣
+            if (text.includes("發送") || text.includes("派遣") || text.includes("送單") || text.includes("傳送")) {
+                const pendingPatients = activePatients.filter(p => !p.dispatched);
+                if (pendingPatients.length > 0) {
+                    const p = pendingPatients[0];
+                    manualSend(p.record_no, p.accession_no || '', p.order_no || '');
+                } else {
+                    speakNotification("目前沒有待處理的派遣單");
+                }
+                return;
+            }
+            
+            // 指令二：接受 / 確認 / 收到了
             if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
                 const pendingPatients = activePatients.filter(p => !p.dispatched);
                 if (pendingPatients.length > 0) {
