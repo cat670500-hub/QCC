@@ -111,8 +111,8 @@ button:disabled {
 
 .request-box.status-dispatched {
     border-left: 6px solid #8b5a2b !important;
-    background: rgba(250, 243, 233, 0.95);
-    box-shadow: 0 4px 12px rgba(139, 90, 43, 0.08);
+    background: rgba(250, 243, 233, 0.95) !important;
+    box-shadow: 0 4px 12px rgba(139, 90, 43, 0.08) !important;
 }
 
 .checked-in-badge {
