@@ -391,6 +391,12 @@
 </head>
 
 <body>
+    <!-- 下拉重新整理指示器 -->
+    <div id="pullToRefresh" style="height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); font-size: 0.9rem; font-weight: bold; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: height 0.2s, margin-bottom 0.2s;">
+        <span id="pullArrow" style="transition: transform 0.2s; display: inline-block;">⬇️</span>
+        <span id="pullText">下拉更新清單...</span>
+    </div>
+
     <!-- 頂部列 -->
     <div class="header">
         <h1>🏥 Portable 語音派遣</h1>
@@ -418,7 +424,10 @@
             <label style="font-size: 0.9rem; font-weight: bold; color: var(--text-main); display: flex; align-items: center; gap: 6px;">🔍 快速篩選與重整</label>
             <button id="refreshBtn" onclick="manualRefresh()" style="background: var(--primary); border: none; border-radius: 10px; padding: 6px 14px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: bold; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">🔄 重新整理</button>
         </div>
-        <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入病歷號或姓名進行快速搜尋..." style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';">
+        <div style="position: relative; width: 100%;">
+            <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入姓名/病歷/床號/檢查進行篩選..." style="width: 100%; padding: 10px 40px 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';">
+            <button id="clearSearchBtn" onclick="clearSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; display: none; align-items: center; justify-content: center; width: 24px; height: 24px; outline: none; -webkit-appearance: none;">✕</button>
+        </div>
     </div>
 
     <!-- 語音控制與回饋面版 -->
@@ -488,11 +497,49 @@
         let recognition;
         let isListening = false;
         
+        // 載入 localStorage 中的搜尋條件
+        function loadSearchQuery() {
+            const query = localStorage.getItem('receiver_search_query');
+            if (query !== null) {
+                const input = document.getElementById('searchInput');
+                if (input) {
+                    input.value = query;
+                    toggleClearButton();
+                }
+            }
+        }
+
+        // 清除搜尋條件
+        function clearSearch() {
+            const input = document.getElementById('searchInput');
+            if (input) {
+                input.value = '';
+                localStorage.setItem('receiver_search_query', '');
+                filterPatients();
+                toggleClearButton();
+            }
+        }
+
+        // 切換清除按鈕顯示與否
+        function toggleClearButton() {
+            const input = document.getElementById('searchInput');
+            const btn = document.getElementById('clearSearchBtn');
+            if (input && btn) {
+                if (input.value.trim().length > 0) {
+                    btn.style.display = 'flex';
+                } else {
+                    btn.style.display = 'none';
+                }
+            }
+        }
+
         // 系統初始化
         window.addEventListener('load', () => {
             loadWardFilter();
+            loadSearchQuery();
             initSpeechRecognition();
             registerServiceWorker();
+            initPullToRefresh();
         });
 
         // 註冊 PWA Service Worker
@@ -610,6 +657,8 @@
                 card.id = `CARD-${p.record_no}-${uniqueReqNo}`;
                 card.setAttribute('data-record', p.record_no);
                 card.setAttribute('data-name', p.name);
+                card.setAttribute('data-bed', p.bed || '');
+                card.setAttribute('data-exam', p.exam || '');
                 
                 const isER = p.bed === '急診';
                 const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
@@ -643,7 +692,7 @@
                              </button>`
                         }
                         <button class="btn btn-success" onclick="manualSend('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
-                            ${p.local_dispatched ? '✔️ 再次發送' : '✔️ 發送'}
+                             ${p.local_dispatched ? '✔️ 再次發送' : '✔️ 發送'}
                         </button>
                     </div>
                 `;
@@ -692,20 +741,100 @@
             }
         }
 
-        // 快速篩選病歷號與姓名
+        // 快速篩選病歷號、姓名、床號與檢查項目
         function filterPatients() {
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            localStorage.setItem('receiver_search_query', query); // 保存搜尋關鍵字
+            
+            toggleClearButton(); // 更新清除按鈕顯示狀態
+            
             const cards = document.querySelectorAll('#incomingRequests .request-card');
             
             cards.forEach(card => {
                 const recordNo = card.getAttribute('data-record') || '';
                 const name = card.getAttribute('data-name') || '';
+                const bed = card.getAttribute('data-bed') || '';
+                const exam = card.getAttribute('data-exam') || '';
                 
-                if (recordNo.toLowerCase().includes(query) || name.toLowerCase().includes(query)) {
+                if (recordNo.toLowerCase().includes(query) || 
+                    name.toLowerCase().includes(query) ||
+                    bed.toLowerCase().includes(query) ||
+                    exam.toLowerCase().includes(query)) {
                     card.style.display = ''; // 顯示符合條件的卡片
                 } else {
                     card.style.display = 'none'; // 隱藏不符合的卡片
                 }
+            });
+        }
+
+        // 下拉重新整理邏輯
+        function initPullToRefresh() {
+            let touchStartY = 0;
+            let touchMoveY = 0;
+            let isPulling = false;
+            const pullDiv = document.getElementById('pullToRefresh');
+            const pullArrow = document.getElementById('pullArrow');
+            const pullText = document.getElementById('pullText');
+            const threshold = 70; // px
+            
+            if (!pullDiv || !pullArrow || !pullText) return;
+
+            window.addEventListener('touchstart', (e) => {
+                if (window.scrollY === 0) {
+                    touchStartY = e.touches[0].clientY;
+                    isPulling = true;
+                    pullDiv.style.transition = 'none'; // 拉動時取消 transition 效果以利跟手
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isPulling) return;
+                touchMoveY = e.touches[0].clientY;
+                const diff = touchMoveY - touchStartY;
+                if (diff > 0) {
+                    const height = Math.min(diff * 0.4, 100); // 加上阻尼係數
+                    pullDiv.style.height = `${height}px`;
+                    pullDiv.style.marginBottom = '15px';
+                    
+                    if (height >= threshold) {
+                        pullArrow.style.transform = 'rotate(180deg)';
+                        pullText.innerText = '釋放以更新清單';
+                    } else {
+                        pullArrow.style.transform = 'rotate(0deg)';
+                        pullText.innerText = '下拉更新清單...';
+                    }
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchend', (e) => {
+                if (!isPulling) return;
+                isPulling = false;
+                pullDiv.style.transition = 'height 0.2s, margin-bottom 0.2s';
+                
+                const diff = touchMoveY - touchStartY;
+                if (diff * 0.4 >= threshold) {
+                    pullDiv.style.height = '40px';
+                    pullArrow.innerText = '🔄';
+                    pullArrow.style.transform = 'none';
+                    pullText.innerText = '正在更新...';
+                    
+                    // 執行資料載入
+                    fetchPatients();
+                    
+                    setTimeout(() => {
+                        pullDiv.style.height = '0';
+                        pullDiv.style.marginBottom = '0';
+                        // 延遲重設箭頭
+                        setTimeout(() => {
+                            pullArrow.innerText = '⬇️';
+                        }, 200);
+                    }, 1000);
+                } else {
+                    pullDiv.style.height = '0';
+                    pullDiv.style.marginBottom = '0';
+                }
+                touchStartY = 0;
+                touchMoveY = 0;
             });
         }
 
