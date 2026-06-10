@@ -68,7 +68,7 @@
                         </span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
                             {% if p.dispatched %}
-                                <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 檢查完成</span>
+                                <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
                             {% elif p.checked_in %}
                                 <span class="checked-in-badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">✅ 已報到</span>
                             {% else %}
@@ -240,7 +240,7 @@
             if (p.dispatched) {
                 badge.style.background = 'rgba(139, 90, 43, 0.15)';
                 badge.style.color = '#8b5a2b';
-                badge.innerText = '📤 檢查完成';
+                badge.innerText = '📤 已分派';
             } else if (p.checked_in) {
                 badge.style.background = 'rgba(59, 130, 246, 0.15)';
                 badge.style.color = '#3b82f6';
