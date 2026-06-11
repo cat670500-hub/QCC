@@ -55,47 +55,27 @@
         const socket = io();
         let activeVoiceMentionPatient = null;
 
-        // 取得中文男聲語音 (優先使用本機/離線男聲康康或其它男聲，並具備本機女聲備用機制，防止線上語音連線失敗導致靜音)
-        function getChineseMaleVoice() {
+        // 取得中文語音 (優先使用 Google 語音，如 Google 國語)
+        function getChineseVoice() {
             if (!('speechSynthesis' in window)) return null;
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return null;
             
-            const maleKeywords = ["zhiwei", "kangkang", "yunxi", "yunyang", "yunjian", "male", "志偉", "智偉", "康康", "雲希", "雲揚", "雲健"];
-            
-            // 1. 優先尋找本機 (localService === true) 的中文男聲
-            const localKangkang = voices.find(v => {
+            // 1. 絕對優先尋找包含 "google" 的中文語音 (例如 Google 國語)
+            const googleVoice = voices.find(v => {
                 const name = v.name.toLowerCase();
                 const lang = v.lang.toLowerCase();
-                return v.localService && (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && (name.includes("kangkang") || name.includes("康康"));
+                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && name.includes("google");
             });
-            if (localKangkang) return localKangkang;
+            if (googleVoice) return googleVoice;
             
-            const localMale = voices.find(v => {
-                const name = v.name.toLowerCase();
-                const lang = v.lang.toLowerCase();
-                return v.localService && (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && maleKeywords.some(kw => name.includes(kw));
-            });
-            if (localMale) return localMale;
-            
-            // 2. 次要尋找雲端/線上 (localService === false) 的中文男聲
-            const cloudKangkang = voices.find(v => {
-                const name = v.name.toLowerCase();
-                const lang = v.lang.toLowerCase();
-                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && (name.includes("kangkang") || name.includes("康康"));
-            });
-            if (cloudKangkang) return cloudKangkang;
-            
-            const cloudMale = voices.find(v => {
-                const name = v.name.toLowerCase();
-                const lang = v.lang.toLowerCase();
-                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && maleKeywords.some(kw => name.includes(kw));
-            });
-            if (cloudMale) return cloudMale;
-            
-            // 3. 備用：尋找本機的任何中文語音（確保 100% 能發出聲音，避免靜音）
+            // 2. 次要尋找任何本機/離線的中文語音
             const localZh = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
             if (localZh) return localZh;
+            
+            // 3. 最後尋找任何中文語音
+            const anyZh = voices.find(v => v.lang.toLowerCase().startsWith("zh"));
+            if (anyZh) return anyZh;
             
             return null;
         }
@@ -135,10 +115,10 @@
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
-                const maleVoice = getChineseMaleVoice();
-                if (maleVoice) {
-                    utterance.voice = maleVoice;
-                    utterance.lang = maleVoice.lang;
+                const voice = getChineseVoice();
+                if (voice) {
+                    utterance.voice = voice;
+                    utterance.lang = voice.lang;
                 } else {
                     utterance.lang = 'zh-TW';
                 }
@@ -203,10 +183,10 @@
                 
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                const maleVoice = getChineseMaleVoice();
-                if (maleVoice) {
-                    utterance.voice = maleVoice;
-                    utterance.lang = maleVoice.lang;
+                const voice = getChineseVoice();
+                if (voice) {
+                    utterance.voice = voice;
+                    utterance.lang = voice.lang;
                 } else {
                     utterance.lang = 'zh-TW';
                 }
