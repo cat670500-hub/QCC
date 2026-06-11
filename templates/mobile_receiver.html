@@ -577,7 +577,7 @@
                 
                 newPatients.forEach(p => {
                     if (isPatientAllowed(p)) {
-                        speakNotification(`請注意，床號 ${p.bed || '無床號'}，病患 ${p.name || '無姓名'}，波特波要來囉。請注意，床號 ${p.bed || '無床號'}，病患 ${p.name || '無姓名'}，波特波要來囉。`);
+                        speakNewDispatch(p.bed || '無床號', p.name || '無姓名');
                     }
                 });
             }
@@ -941,6 +941,33 @@
                 utterance.rate = 1.0;
                 utterance.pitch = 1.0;
                 window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 新派遣語音播報 (中英混合，英文單字 "portable" 使用 en-US 發音)
+        function speakNewDispatch(bed, name) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                for (let i = 0; i < 2; i++) {
+                    const u1 = new SpeechSynthesisUtterance(`請注意，床號 ${bed}，病患 ${name}，`);
+                    u1.lang = 'zh-TW';
+                    u1.rate = 1.0;
+                    u1.pitch = 1.0;
+                    
+                    const u2 = new SpeechSynthesisUtterance("portable");
+                    u2.lang = 'en-US';
+                    u2.rate = 1.0;
+                    u2.pitch = 1.0;
+                    
+                    const u3 = new SpeechSynthesisUtterance("要來囉。");
+                    u3.lang = 'zh-TW';
+                    u3.rate = 1.0;
+                    u3.pitch = 1.0;
+                    
+                    window.speechSynthesis.speak(u1);
+                    window.speechSynthesis.speak(u2);
+                    window.speechSynthesis.speak(u3);
+                }
             }
         }
 
