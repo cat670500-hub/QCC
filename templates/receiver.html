@@ -144,11 +144,11 @@
                 }
             }
 
-            // 語音朗誦姓名、床號，重複兩次 (將英文單字 "portable" 前後加空格，使用單一語音物件朗讀以維持聲音一致且無停頓)
+            // 語音朗誦姓名、床號，重複兩次 (將英文單字 "Portable" 前後加空格，使用單一語音物件朗讀以維持聲音一致且無停頓)
             if ('speechSynthesis' in window) {
                 const name = p.name || '無姓名';
                 const bed = p.bed || '無床號';
-                const textToSpeak = `請注意，床號 ${bed}，病患 ${name}， portable 要來囉。請注意，床號 ${bed}，病患 ${name}， portable 要來囉。`;
+                const textToSpeak = `請注意，床號 ${bed}，病患 ${name}， Portable 要來囉。請注意，床號 ${bed}，病患 ${name}， Portable 要來囉。`;
                 
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(textToSpeak);
