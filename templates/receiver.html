@@ -148,7 +148,7 @@
             if ('speechSynthesis' in window) {
                 const name = p.name || '無姓名';
                 const bed = p.bed || '無床號';
-                const textToSpeak = `請注意，病患 ${name}，床號 ${bed}。病患 ${name}，床號 ${bed}。`;
+                const textToSpeak = `請注意，床號 ${bed}，病患 ${name}，portable要來囉。請注意，床號 ${bed}，病患 ${name}，portable要來囉。`;
                 
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(textToSpeak);
