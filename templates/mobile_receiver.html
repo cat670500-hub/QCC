@@ -652,8 +652,8 @@
                 const getPriority = (p) => {
                     if (p.dispatched) return 4;
                     if (p.checked_in) return 0;       // 1. 已報到 (且未分派) 最優先
-                    if (p.local_dispatched && !p.confirmed) return 1; // 2. 已發送通知 (已通知) 次之
-                    if (p.confirmed) return 2;         // 3. 已回覆 再次之
+                    if (p.confirmed) return 1;         // 2. 已回覆 次之
+                    if (p.local_dispatched) return 2; // 3. 已發送通知 (已通知) 再次之
                     return 3;                         // 4. 未報到 (且未分派) 又次之
                 };
                 
