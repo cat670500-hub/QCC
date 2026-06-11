@@ -650,9 +650,10 @@
             // 同一狀態下依 order_no 降序排序 (維持新單在上方)
             pendingPatients.sort((a, b) => {
                 const getPriority = (p) => {
-                    if (p.dispatched) return 2;
-                    if (p.checked_in) return 0;
-                    return 1;
+                    if (p.dispatched) return 3;
+                    if (p.local_dispatched) return 0; // 已通知最優先置頂
+                    if (p.checked_in) return 1;       // 已報到次之
+                    return 2;                         // 未報到再次之
                 };
                 
                 const priorityA = getPriority(a);
