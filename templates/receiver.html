@@ -144,26 +144,16 @@
                 }
             }
 
-            // 語音朗誦姓名、床號，重複兩次 (中英混合，英文單字 "portable" 使用 en-US 發音)
+            // 語音朗誦姓名、床號，重複兩次 (將英文單字 "portable" 前後加空格，使用單一語音物件朗讀以維持聲音一致且無停頓)
             if ('speechSynthesis' in window) {
                 const name = p.name || '無姓名';
                 const bed = p.bed || '無床號';
+                const textToSpeak = `請注意，床號 ${bed}，病患 ${name}， portable 要來囉。請注意，床號 ${bed}，病患 ${name}， portable 要來囉。`;
                 
                 window.speechSynthesis.cancel();
-                for (let i = 0; i < 2; i++) {
-                    const u1 = new SpeechSynthesisUtterance(`請注意，床號 ${bed}，病患 ${name}，`);
-                    u1.lang = 'zh-TW';
-                    
-                    const u2 = new SpeechSynthesisUtterance("portable");
-                    u2.lang = 'en-US';
-                    
-                    const u3 = new SpeechSynthesisUtterance("要來囉。");
-                    u3.lang = 'zh-TW';
-                    
-                    window.speechSynthesis.speak(u1);
-                    window.speechSynthesis.speak(u2);
-                    window.speechSynthesis.speak(u3);
-                }
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                utterance.lang = 'zh-TW';
+                window.speechSynthesis.speak(utterance);
             }
 
             const appNoVal = p.accession_no || p.order_no || '';
