@@ -18,6 +18,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
 import kotlin.concurrent.thread
+import android.telecom.TelecomManager
+import android.telephony.SmsManager
+import android.content.pm.PackageManager
+import io.socket.client.IO
+import io.socket.client.Socket
 
 class CallMonitorService : Service() {
 
@@ -25,6 +30,7 @@ class CallMonitorService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private var isRecognizerActive = false
     private var flaskIpAddress = "192.168.1.100" // 預設 IP，可在 App 畫面修改
+    private var mSocket: Socket? = null
     private val NOTIFICATION_ID = 888
     private val CHANNEL_ID = "CallMonitorChannel"
 
@@ -37,6 +43,63 @@ class CallMonitorService : Service() {
         // 讀取先前儲存的 Flask IP 設定
         val prefs = getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
         flaskIpAddress = prefs.getString("flask_ip", "192.168.1.100") ?: "192.168.1.100"
+
+        // 初始化 Socket.IO 連線
+        initSocket()
+    }
+
+    private fun initSocket() {
+        try {
+            val opts = IO.Options().apply {
+                forceNew = true
+                reconnection = true
+            }
+            mSocket = IO.socket("http://$flaskIpAddress:5000", opts)
+            
+            mSocket?.on(Socket.EVENT_CONNECT) {
+                Log.d("CallMonitorService", "Socket.IO connected")
+                mSocket?.emit("register_android")
+            }
+            
+            mSocket?.on(Socket.EVENT_DISCONNECT) {
+                Log.d("CallMonitorService", "Socket.IO disconnected")
+            }
+            
+            mSocket?.on("send_sms") { args ->
+                if (args.isNotEmpty() && args[0] is JSONObject) {
+                    val data = args[0] as JSONObject
+                    val phone = data.optString("phone")
+                    val message = data.optString("message")
+                    Log.d("CallMonitorService", "Received send_sms request: phone=$phone, message=$message")
+                    if (phone.isNotEmpty() && message.isNotEmpty()) {
+                        sendSms(phone, message)
+                    }
+                }
+            }
+            
+            mSocket?.connect()
+        } catch (e: Exception) {
+            Log.e("CallMonitorService", "Failed to initialize Socket.IO: ${e.message}")
+        }
+    }
+
+    private fun sendSms(phone: String, message: String) {
+        try {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+                val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    getSystemService(SmsManager::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    SmsManager.getDefault()
+                }
+                smsManager.sendTextMessage(phone, null, message, null, null)
+                Log.d("CallMonitorService", "SMS sent successfully to $phone")
+            } else {
+                Log.e("CallMonitorService", "Cannot send SMS: SEND_SMS permission not granted")
+            }
+        } catch (e: Exception) {
+            Log.e("CallMonitorService", "Error sending SMS: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -48,6 +111,22 @@ class CallMonitorService : Service() {
         when (callState) {
             "RINGING" -> {
                 updateNotification("來電響鈴中: $phoneNumber")
+                // 自動接聽來電
+                try {
+                    val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            telecomManager.acceptRingingCall()
+                            Log.d("CallMonitorService", "✅ 已自動接聽來電: $phoneNumber")
+                        } else {
+                            Log.w("CallMonitorService", "SDK 版本低於 Oreo (26)，不支援 acceptRingingCall()")
+                        }
+                    } else {
+                        Log.e("CallMonitorService", "未獲得 ANSWER_PHONE_CALLS 權限，無法自動接聽！")
+                    }
+                } catch (e: Exception) {
+                    Log.e("CallMonitorService", "自動接聽來電時發生錯誤: ${e.message}")
+                }
             }
             "OFFHOOK" -> {
                 updateNotification("通話中 - 語音派遣自動監聽已開啟")
@@ -231,5 +310,12 @@ class CallMonitorService : Service() {
         super.onDestroy()
         stopSpeechRecognition()
         enableSpeakerphone(false)
+        try {
+            mSocket?.disconnect()
+            mSocket?.off()
+            mSocket = null
+        } catch (e: Exception) {
+            Log.e("CallMonitorService", "Error disconnecting socket: ${e.message}")
+        }
     }
 }

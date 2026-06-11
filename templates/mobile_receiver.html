@@ -269,6 +269,27 @@
             background: #3b82f6;
         }
 
+        .request-card.voice-mentioned {
+            background: rgba(234, 179, 8, 0.15) !important;
+            border-color: rgba(234, 179, 8, 0.3) !important;
+            box-shadow: 0 4px 16px rgba(234, 179, 8, 0.2) !important;
+            animation: pulse-border 2s infinite alternate !important;
+        }
+        
+        .request-card.voice-mentioned::before {
+            background: #eab308 !important;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(234, 179, 8, 0.3); }
+            100% { border-color: rgba(234, 179, 8, 0.8); }
+        }
+
+        @keyframes flash-text {
+            0% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
         .request-card.dispatched {
             background: rgba(139, 90, 43, 0.1);
             border-color: rgba(139, 90, 43, 0.2);
@@ -620,11 +641,12 @@
             // 同一狀態下依 order_no 降序排序 (維持新單在上方)
             pendingPatients.sort((a, b) => {
                 const getPriority = (p) => {
-                    if (p.dispatched) return 4;
-                    if (p.checked_in) return 0;       // 1. 已報到 (且未分派) 最優先
-                    if (p.confirmed) return 1;         // 2. 已回覆 次之
-                    if (p.local_dispatched) return 2; // 3. 已發送通知 (已通知) 再次之
-                    return 3;                         // 4. 未報到 (且未分派) 又次之
+                    if (p.voice_mentioned) return 0;  // 1. 語音提到最最優先
+                    if (p.dispatched) return 5;
+                    if (p.checked_in) return 1;       // 2. 已報到 (且未分派) 次之
+                    if (p.confirmed) return 2;         // 3. 已回覆 再次之
+                    if (p.local_dispatched) return 3; // 4. 已發送通知 (已通知) 又次之
+                    return 4;                         // 5. 未報到 (且未分派) 更次之
                 };
                 
                 const priorityA = getPriority(a);
@@ -648,7 +670,9 @@
             pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
                 let cardClass = '';
-                if (p.dispatched) {
+                if (p.voice_mentioned) {
+                    cardClass = 'request-card voice-mentioned';
+                } else if (p.dispatched) {
                     cardClass = 'request-card dispatched';
                 } else if (p.confirmed) {
                     cardClass = 'request-card confirmed';
@@ -685,11 +709,16 @@
                     confirmedBadge = '<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📥 已回覆</span>';
                 }
 
+                let voiceMentionBadge = '';
+                if (p.voice_mentioned) {
+                    voiceMentionBadge = '<span style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📞 語音來電中</span>';
+                }
+
                 card.innerHTML = `
                     <div class="card-header">
                         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
                             <div class="exam-title">${p.exam}</div>
-                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${badgeText}${confirmedBadge}</div>
+                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${voiceMentionBadge}${badgeText}${confirmedBadge}</div>
                         </div>
                         <div class="${bedBadgeClass}">${p.bed || '無床號'}</div>
                     </div>
@@ -697,6 +726,7 @@
                         <span>姓名: <strong>${p.name}</strong></span>
                         <span>病歷號: <strong>${p.record_no}</strong></span>
                         <span>來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
+                        ${p.voice_mentioned ? `<span class="voice-mentioned-notice" style="font-size: 0.85rem; color: #eab308; font-weight: bold; margin-top: 4px; animation: flash-text 1.5s infinite alternate;">⚠️ 來電語音提到此病患，請確認是否報到</span>` : ''}
                         ${p.local_dispatched && p.dispatch_time ? `<span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 4px;">📢 已於 ${p.dispatch_time} 發送通知</span>` : ''}
                         ${p.confirmed ? `<span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold; margin-top: 4px;">✅ 接收端已回覆接受</span>` : ''}
                     </div>
@@ -1085,7 +1115,77 @@
                 return;
             }
         }
+
+        let activeVoiceMentionPatient = null;
+
+        socket.on('voice_mention_alert', (data) => {
+            const p = data.patient;
+            if (!p) return;
+            activeVoiceMentionPatient = p;
+
+            document.getElementById('voiceMentionText').innerText = data.text;
+            document.getElementById('voiceMentionName').innerText = p.name;
+            document.getElementById('voiceMentionRecordNo').innerText = p.record_no;
+            document.getElementById('voiceMentionBed').innerText = p.bed || '無';
+            document.getElementById('voiceMentionExam').innerText = p.exam || '無';
+
+            const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
+            checkInBtn.onclick = () => {
+                socket.emit('check_in_patient', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+                
+                socket.emit('clear_voice_mention', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+
+                closeVoiceMention();
+            };
+
+            document.getElementById('voiceMentionModal').style.display = 'block';
+            speakNotification(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+        });
+
+        function closeVoiceMention() {
+            document.getElementById('voiceMentionModal').style.display = 'none';
+            if (activeVoiceMentionPatient) {
+                const p = activeVoiceMentionPatient;
+                socket.emit('clear_voice_mention', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+                activeVoiceMentionPatient = null;
+            }
+        }
     </script>
+
+    <!-- 語音來電詢問報到 Modal -->
+    <div id="voiceMentionModal" class="modal" style="background: rgba(30, 41, 59, 0.95); color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.1); width: calc(100% - 40px); max-width: 420px; text-align: left; padding: 25px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); font-family: 'Outfit', sans-serif;">
+        <h3 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #eab308; margin-top: 0;">
+            📞 來電語音辨識提醒
+        </h3>
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
+            來電內容：「<span id="voiceMentionText" style="color: #f8fafc; font-style: italic; font-weight: 600;"></span>」
+        </p>
+        <div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-size: 1.05rem; font-weight: bold; color: #f8fafc; margin-bottom: 6px;" id="voiceMentionName">病患姓名</div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">病歷號：<span id="voiceMentionRecordNo"></span></div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">床號：<span id="voiceMentionBed"></span></div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
+        </div>
+        <div style="display: flex; gap: 10px; width: 100%;">
+            <button id="voiceMentionCheckInBtn" class="btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
+            <button onclick="closeVoiceMention()" class="btn" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
+        </div>
+    </div>
 </body>
 
 </html>

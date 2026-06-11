@@ -184,6 +184,60 @@ def save_settings(settings):
 
 load_settings()
 
+SMS_SETTINGS_FILE = "sms_settings.json"
+sms_settings = {"rules": []}
+
+def load_sms_settings():
+    global sms_settings
+    try:
+        if os.path.exists(SMS_SETTINGS_FILE):
+            with open(SMS_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                sms_settings = json.load(f)
+            print(f"[系統] 已成功載入簡訊設定檔: {sms_settings}")
+        else:
+            save_sms_settings(sms_settings)
+    except Exception as e:
+        print(f"[警告] 載入簡訊設定檔 {SMS_SETTINGS_FILE} 失敗: {e}")
+
+def save_sms_settings(settings):
+    try:
+        with open(SMS_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=4)
+        print(f"[系統] 已儲存簡訊設定檔: {settings}")
+    except Exception as e:
+        print(f"[警告] 儲存簡訊設定檔 {SMS_SETTINGS_FILE} 失敗: {e}")
+
+load_sms_settings()
+
+# 存放 Android 簡訊/來電端之連線 Session ID
+android_sid = None
+
+def get_sms_number_for_bed(bed):
+    if not bed:
+        return None
+    match = re.match(r'^([a-zA-Z0-9]+?)(0*[0-9]+)$', bed.strip())
+    if match:
+        ward = match.group(1).upper()
+        try:
+            bed_num = int(match.group(2))
+        except ValueError:
+            return None
+    else:
+        ward = bed.strip().upper()
+        bed_num = 0
+
+    for rule in sms_settings.get("rules", []):
+        rule_ward = str(rule.get("ward", "")).strip().upper()
+        if ward == rule_ward:
+            try:
+                start = int(rule.get("bed_start", 0))
+                end = int(rule.get("bed_end", 0))
+                if start <= bed_num <= end:
+                    return rule.get("phone")
+            except Exception:
+                continue
+    return None
+
 # 存放每個病患發送時的自訂通知文字
 dispatch_messages = {}
 
@@ -246,17 +300,19 @@ def log_dispatch(patient_info, time_str):
         print(f"[警告] 寫入發送日誌失敗: {e}")
 
 def sort_patients(patients):
-    """排序病患：已報到 (最上端) -> 未報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
+    """排序病患：語音提到 (最上端) -> 已報到 (次之) -> 未報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
     # 穩定排序：先依單號降序 (新單在上)
     patients_by_date = sorted(patients, key=lambda x: x.get('order_no', ''), reverse=True)
-    # 狀態優先級：已報到 (0) -> 未報到 (1) -> 已分派 (2)
+    # 狀態優先級：語音提到 (0) -> 已報到 (1) -> 未報到 (2) -> 已分派 (3)
     def get_status_priority(p):
-        if p.get('dispatched'):
-            return 2
-        elif p.get('checked_in'):
+        if p.get('voice_mentioned'):
             return 0
-        else:
+        elif p.get('dispatched'):
+            return 3
+        elif p.get('checked_in'):
             return 1
+        else:
+            return 2
     return sorted(patients_by_date, key=get_status_priority)
 
 @app.route('/')
@@ -298,6 +354,45 @@ def receiver():
 @app.route('/mobile')
 def mobile_receiver():
     return render_template('mobile_receiver.html')
+
+@app.route('/sms_settings')
+def sms_settings_page():
+    return render_template('sms_settings.html')
+
+@app.route('/api/sms_settings', methods=['GET', 'POST'])
+def api_sms_settings():
+    global sms_settings
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        sms_settings['rules'] = data.get('rules', [])
+        save_sms_settings(sms_settings)
+        return jsonify({"status": "success"})
+    return jsonify(sms_settings)
+
+@app.route('/api/clear_voice_mention', methods=['POST'])
+def clear_voice_mention():
+    global patients_data
+    data = request.get_json() or {}
+    record_no = str(data.get('record_no') or '').strip()
+    exam = str(data.get('exam') or '').strip()
+    acc = str(data.get('accession_no') or '').strip()
+    ord_no = str(data.get('order_no') or '').strip()
+    req_no = acc if acc else ord_no
+    
+    patient_key = f"{record_no}|{exam}|{req_no}"
+    for p in patients_data:
+        p_rec = str(p.get('record_no') or '').strip()
+        p_ex = str(p.get('exam') or '').strip()
+        p_acc = str(p.get('accession_no') or '').strip()
+        p_ord = str(p.get('order_no') or '').strip()
+        p_req = p_acc if p_acc else p_ord
+        if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
+            p['voice_mentioned'] = False
+            break
+            
+    patients_data = sort_patients(patients_data)
+    socketio.emit('patients_updated', patients_data)
+    return jsonify({"status": "success"})
 
 @app.route('/manifest.json')
 def serve_manifest():
@@ -368,7 +463,7 @@ def voice_dispatch():
                 matched_patient = p
                 break
                 
-    # 3. 如果找到了配對的病患，依據語音內容執行對應動作
+    # 3. 如果找到了配對的病患，標記語音提到並廣播彈窗通知，由操作人員決定是否報到
     if matched_patient:
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
         matched_exam = str(matched_patient.get('exam', '')).strip()
@@ -377,140 +472,33 @@ def voice_dispatch():
         matched_req = matched_acc if matched_acc else matched_ord
         patient_key = f"{matched_record_no}|{matched_exam}|{matched_req}"
         
-        # 情況 A：語音要求取消報到
-        if "取消報到" in text:
-            print(f"=> [語音自動取消報到] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，進行取消報到變更...")
-            if patient_key in checked_in_patients:
-                checked_in_patients.remove(patient_key)
-            
-            for p in patients_data:
-                p_rec = str(p.get('record_no', '')).strip()
-                p_ex = str(p.get('exam', '')).strip()
-                p_acc = str(p.get('accession_no', '')).strip()
-                p_ord = str(p.get('order_no', '')).strip()
-                p_req = p_acc if p_acc else p_ord
-                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                    p['checked_in'] = False
-                    break
-            
-            # 將取消報到任務加入待處理佇列
-            accession_no = matched_patient.get('accession_no')
-            if accession_no:
-                if agent_sid:
-                    print(f"[系統] 語音轉發取消報到請求給本機代理端 (AccessionNo: {accession_no})")
-                    socketio.emit('agent_check_in', {
-                        "accession_no": accession_no,
-                        "is_check_in": False
-                    }, room=agent_sid)
-                else:
-                    pending_hospital_check_ins.append({
-                        "accession_no": accession_no,
-                        "is_check_in": False
-                    })
+        # 標記為語音提到，最優先置頂
+        for p in patients_data:
+            p_rec = str(p.get('record_no', '')).strip()
+            p_ex = str(p.get('exam', '')).strip()
+            p_acc = str(p.get('accession_no', '')).strip()
+            p_ord = str(p.get('order_no', '')).strip()
+            p_req = p_acc if p_acc else p_ord
+            if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
+                p['voice_mentioned'] = True
+                break
                 
-            patients_data = sort_patients(patients_data)
-            socketio.emit('patients_updated', patients_data)
-            
-            return jsonify({
-                "status": "success", 
-                "matched": True, 
-                "patient": matched_patient,
-                "action": "cancel_check_in"
-            })
-            
-        # 情況 B：語音要求報到
-        elif "報到" in text:
-            print(f"=> [語音自動報到] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，進行報到狀態變更...")
-            checked_in_patients.add(patient_key)
-            
-            for p in patients_data:
-                p_rec = str(p.get('record_no', '')).strip()
-                p_ex = str(p.get('exam', '')).strip()
-                p_acc = str(p.get('accession_no', '')).strip()
-                p_ord = str(p.get('order_no', '')).strip()
-                p_req = p_acc if p_acc else p_ord
-                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                    p['checked_in'] = True
-                    break
-            
-            # 將報到任務加入待處理佇列
-            accession_no = matched_patient.get('accession_no')
-            if accession_no:
-                if agent_sid:
-                    print(f"[系統] 語音轉發報到請求給本機代理端 (AccessionNo: {accession_no})")
-                    socketio.emit('agent_check_in', {
-                        "accession_no": accession_no,
-                        "is_check_in": True
-                    }, room=agent_sid)
-                else:
-                    pending_hospital_check_ins.append({
-                        "accession_no": accession_no,
-                        "is_check_in": True
-                    })
-                
-            patients_data = sort_patients(patients_data)
-            socketio.emit('patients_updated', patients_data)
-            
-            return jsonify({
-                "status": "success", 
-                "matched": True, 
-                "patient": matched_patient,
-                "action": "check_in"
-            })
-            
-        # 情況 C：預設為執行自動派遣
-        else:
-            req_id = 'REQ-VOICE-' + str(int(time.time()))
-            print(f"=> [語音自動派遣] 成功匹配病患 {matched_patient['name']} ({matched_record_no})，開始自動派遣...")
-            
-            # 記錄為已發送，避免重複出現在待發送清單中
-            sent_patients.add(patient_key)
-            
-            # 記錄發送時間
-            now_str = time.strftime('%H:%M')
-            dispatch_times[patient_key] = now_str
-            
-            # 寫入日誌檔
-            log_dispatch(matched_patient, now_str)
-            
-            # 標記為本地已發送，不改變 dispatched，維持在原本狀態與排序
-            matched_patient['local_dispatched'] = True
-            matched_patient['dispatch_time'] = now_str
-            for p in patients_data:
-                p_rec = str(p.get('record_no', '')).strip()
-                p_ex = str(p.get('exam', '')).strip()
-                p_acc = str(p.get('accession_no', '')).strip()
-                p_ord = str(p.get('order_no', '')).strip()
-                p_req = p_acc if p_acc else p_ord
-                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                    p['local_dispatched'] = True
-                    p['dispatch_time'] = now_str
-                    break
-            patients_data = sort_patients(patients_data)
-            socketio.emit('patients_updated', patients_data)
-            
-            # 廣播新派遣請求給接收端 (Receiver)
-            socketio.emit('new_request', {'id': req_id, 'patient': matched_patient})
-            current_requests[req_id] = {
-                "status": "waiting",
-                "patient": matched_patient
-            }
-            
-            # 4. 分析對話中是否有接受/確認/抵達等肯定的意思
-            is_confirm = any(word in text for word in ["接受", "確認", "好的", "收到了", "10分鐘", "十分鐘", "行", "可以", "照"])
-            if is_confirm:
-                current_requests[req_id]["status"] = "confirmed"
-                add_to_history(req_id, matched_patient)
-                socketio.emit('request_confirmed', {'id': req_id, 'patient': matched_patient})
-                socketio.emit('patients_updated', patients_data)
-                print(f"=> [語音自動確認] 對話中偵測到肯定語意，已為其自動核准派遣！")
-                
-            return jsonify({
-                "status": "success", 
-                "matched": True, 
-                "patient": matched_patient,
-                "action": "dispatched_and_confirmed" if is_confirm else "dispatched"
-            })
+        patients_data = sort_patients(patients_data)
+        socketio.emit('patients_updated', patients_data)
+        
+        # 廣播彈窗事件
+        print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，發送彈窗廣播。")
+        socketio.emit('voice_mention_alert', {
+            'patient': matched_patient,
+            'text': text
+        })
+        
+        return jsonify({
+            "status": "success", 
+            "matched": True, 
+            "patient": matched_patient,
+            "action": "voice_mentioned"
+        })
         
     return jsonify({
         "status": "success", 
@@ -540,6 +528,18 @@ def update_patients():
             p['checked_in'] = p.get('checked_in', False) or (patient_key in checked_in_patients)
             # 優先保留確認/回覆狀態
             p['confirmed'] = p.get('confirmed', False) or (patient_key in confirmed_patients)
+            # 優先保留語音提到狀態
+            existing_voice_mentioned = False
+            for old_p in patients_data:
+                old_rec = old_p.get('record_no')
+                old_ex = old_p.get('exam')
+                old_acc = old_p.get('accession_no')
+                old_ord = old_p.get('order_no')
+                old_req = old_acc if old_acc else old_ord
+                if f"{old_rec}|{old_ex}|{old_req}" == patient_key:
+                    existing_voice_mentioned = old_p.get('voice_mentioned', False)
+                    break
+            p['voice_mentioned'] = p.get('voice_mentioned', False) or existing_voice_mentioned
             # 只有醫院端真正分派才設為 dispatched。本地發送使用 local_dispatched 追蹤。
             p['dispatched'] = p.get('dispatched', False)
             p['local_dispatched'] = (patient_key in sent_patients)
@@ -595,10 +595,13 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    global agent_sid
+    global agent_sid, android_sid
     if request.sid == agent_sid:
         agent_sid = None
         print("[系統] 代理端 (本機) 已中斷連線。")
+    elif request.sid == android_sid:
+        android_sid = None
+        print("[系統] Android 簡訊/來電控制端已中斷連線。")
     else:
         print(f"[系統] 客戶端中斷連線: {request.sid}")
 
@@ -607,6 +610,35 @@ def handle_register_agent():
     global agent_sid
     agent_sid = request.sid
     print(f"[系統] 代理端 (本機) 已成功註冊，連線 ID: {agent_sid}")
+
+@socketio.on('register_android')
+def handle_register_android():
+    global android_sid
+    android_sid = request.sid
+    print(f"[系統] Android 簡訊/來電控制端已成功註冊，連線 ID: {android_sid}")
+
+@socketio.on('clear_voice_mention')
+def handle_clear_voice_mention(data):
+    global patients_data
+    record_no = str(data.get('record_no') or '').strip()
+    exam = str(data.get('exam') or '').strip()
+    acc = str(data.get('accession_no') or '').strip()
+    ord_no = str(data.get('order_no') or '').strip()
+    req_no = acc if acc else ord_no
+    
+    patient_key = f"{record_no}|{exam}|{req_no}"
+    for p in patients_data:
+        p_rec = str(p.get('record_no') or '').strip()
+        p_ex = str(p.get('exam') or '').strip()
+        p_acc = str(p.get('accession_no') or '').strip()
+        p_ord = str(p.get('order_no') or '').strip()
+        p_req = p_acc if p_acc else p_ord
+        if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
+            p['voice_mentioned'] = False
+            break
+            
+    patients_data = sort_patients(patients_data)
+    socketio.emit('patients_updated', patients_data)
 
 def log_server_sync_error(acc_no, action, message):
     try:
@@ -703,6 +735,18 @@ def handle_request(data):
                 break
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
+
+        # --- 簡訊發送號碼匹配與觸發 ---
+        bed = patient_info.get('bed', '')
+        phone = get_sms_number_for_bed(bed)
+        if phone and android_sid:
+            exam_name = patient_info.get('exam', '未知')
+            pname = patient_info.get('name', '未知')
+            sms_text = f"【Portable 醫令通知】病房床號: {bed} | 檢查項目: {exam_name} | 病患: {pname} ({record_no})，請為其準備檢查。"
+            print(f"[系統簡訊] 匹配到病房 {bed} 對應手機 {phone}，向 Android 端發送發簡訊指令。")
+            socketio.emit('send_sms', {'phone': phone, 'message': sms_text}, room=android_sid)
+        elif phone and not android_sid:
+            print(f"[系統簡訊警告] 匹配到簡訊接收電話 {phone}，但 Android 簡訊發送端未連線！")
     
     patient_name = patient_info.get('name') if patient_info else 'Unknown'
     print(f"收到請求: {request_id} (病患: {patient_name})")

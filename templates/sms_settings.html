@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>簡訊發送設定 - Portable 派遣系統</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+            color: #f8fafc;
+            height: auto;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+        }
+
+        .container {
+            background: rgba(30, 41, 59, 0.7) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            color: #f8fafc;
+            text-align: left;
+            padding: 2.5rem;
+            max-height: none;
+            overflow: visible;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(to right, #38bdf8, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            background: rgba(15, 23, 42, 0.4);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .form-input-control {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .form-input-control label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        .form-input {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        }
+
+        .btn-add {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            align-self: flex-end;
+            padding: 10px 24px;
+            height: 42px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+        }
+
+        .btn-back {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 0.95rem;
+            padding: 8px 18px;
+            border-radius: 10px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(15, 23, 42, 0.5);
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        td {
+            background: rgba(30, 41, 59, 0.4);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.95rem;
+        }
+
+        tr:hover td {
+            background: rgba(30, 41, 59, 0.6);
+        }
+
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-delete:hover {
+            background: #ef4444;
+            color: white;
+        }
+
+        .no-rules {
+            text-align: center;
+            padding: 30px;
+            color: #64748b;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+            <h1>✉️ 簡訊發送號碼設定</h1>
+            <a href="/sender" class="btn-back">⬅️ 返回發送端</a>
+        </div>
+
+        <div style="margin-bottom: 20px; color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
+            💡 系統在發送派遣時，會自動解析病患的「床號」（例如：11B05）。<br>
+            若床號符合下方設定之 <strong>病房代碼</strong> (例如 11B) 且 <strong>床號數字</strong> 介於起點與終點之間 (例如 01 至 10)，則會透過連線的 Android 手機，自動向對應的手機號碼發送簡訊通知。
+        </div>
+
+        <!-- 新增規則表單 -->
+        <div class="form-group">
+            <div class="form-input-control">
+                <label for="ward">病房代碼</label>
+                <input type="text" id="ward" class="form-input" placeholder="例如：11B, 6C">
+            </div>
+            <div class="form-input-control">
+                <label for="bedStart">床號範圍起點</label>
+                <input type="text" id="bedStart" class="form-input" placeholder="例如：01">
+            </div>
+            <div class="form-input-control">
+                <label for="bedEnd">床號範圍終點</label>
+                <input type="text" id="bedEnd" class="form-input" placeholder="例如：10">
+            </div>
+            <div class="form-input-control" style="flex: 2;">
+                <label for="phone">接收簡訊手機號碼</label>
+                <input type="text" id="phone" class="form-input" placeholder="例如：0912345678">
+            </div>
+            <button onclick="addRule()" class="btn-add">➕ 新增規則</button>
+        </div>
+
+        <!-- 規則列表 -->
+        <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 15px; color: #94a3b8;">📋 當前簡訊發送規則</h2>
+        <div style="overflow-x: auto; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <table>
+                <thead>
+                    <tr>
+                        <th>病房代碼</th>
+                        <th>床號範圍 (起)</th>
+                        <th>床號範圍 (迄)</th>
+                        <th>手機號碼</th>
+                        <th style="width: 100px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="rulesTableBody">
+                    <tr>
+                        <td colspan="5" class="no-rules">讀取資料中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let rulesList = [];
+
+        // 載入當前規則
+        function fetchRules() {
+            fetch('/api/sms_settings')
+                .then(res => res.json())
+                .then(data => {
+                    rulesList = data.rules || [];
+                    renderRules();
+                })
+                .catch(err => console.error("獲取簡訊規則失敗:", err));
+        }
+
+        // 渲染表格
+        function renderRules() {
+            const tbody = document.getElementById('rulesTableBody');
+            tbody.innerHTML = '';
+            
+            if (rulesList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="no-rules">目前尚未設定任何簡訊規則，簡訊通知功能處於停用狀態。</td></tr>`;
+                return;
+            }
+
+            rulesList.forEach((rule, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${rule.ward}</strong></td>
+                    <td>${rule.bed_start}</td>
+                    <td>${rule.bed_end}</td>
+                    <td><code>${rule.phone}</code></td>
+                    <td>
+                        <button class="btn-delete" onclick="deleteRule(${index})">🗑️ 刪除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 新增規則
+        function addRule() {
+            const wardInput = document.getElementById('ward');
+            const bedStartInput = document.getElementById('bedStart');
+            const bedEndInput = document.getElementById('bedEnd');
+            const phoneInput = document.getElementById('phone');
+
+            const ward = wardInput.value.trim().toUpperCase();
+            const bedStart = bedStartInput.value.trim();
+            const bedEnd = bedEndInput.value.trim();
+            const phone = phoneInput.value.trim();
+
+            if (!ward || !bedStart || !bedEnd || !phone) {
+                alert("請填寫所有欄位！");
+                return;
+            }
+
+            // 格式基本驗證
+            if (!/^[0-9]+$/.test(bedStart) || !/^[0-9]+$/.test(bedEnd)) {
+                alert("床號範圍起點與終點必須為純數字！");
+                return;
+            }
+
+            if (!/^09\d{8}$/.test(phone)) {
+                alert("手機號碼格式不正確，應為 09 開頭共 10 碼數字！");
+                return;
+            }
+
+            const newRule = {
+                ward: ward,
+                bed_start: bedStart,
+                bed_end: bedEnd,
+                phone: phone
+            };
+
+            rulesList.push(newRule);
+            saveRules();
+
+            // 清空輸入
+            wardInput.value = '';
+            bedStartInput.value = '';
+            bedEndInput.value = '';
+            phoneInput.value = '';
+        }
+
+        // 刪除規則
+        function deleteRule(index) {
+            if (!confirm("確定要刪除此筆簡訊規則嗎？")) return;
+            rulesList.splice(index, 1);
+            saveRules();
+        }
+
+        // 儲存規則至伺服器
+        function saveRules() {
+            fetch('/api/sms_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rules: rulesList })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    fetchRules();
+                } else {
+                    alert("儲存失敗: " + data.message);
+                }
+            })
+            .catch(err => {
+                console.error("儲存簡訊規則發生錯誤:", err);
+                alert("儲存時發生網路連線錯誤！");
+            });
+        }
+
+        // 初始化
+        window.addEventListener('load', fetchRules);
+    </script>
+</body>
+</html>

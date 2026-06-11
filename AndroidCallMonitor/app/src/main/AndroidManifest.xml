@@ -5,6 +5,8 @@
     <!-- 撥打電話與讀取來電狀態權限 -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
     
     <!-- 錄音與擴音控制權限 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

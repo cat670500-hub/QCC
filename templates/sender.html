@@ -22,9 +22,12 @@
                 <span style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap;">本機 IP</span>
             </div>
         </div>
-        <div style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.2); padding: 12px 20px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+        <div style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.2); padding: 12px 20px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
             <span style="color: #0ea5e9; font-weight: 600;">📱 智慧型手機請點選右側，安裝為「語音控制行動端 App」！</span>
-            <a href="/mobile" target="_blank" style="background: #0ea5e9; color: white; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);">前往行動端</a>
+            <div style="display: flex; gap: 10px;">
+                <a href="/sms_settings" target="_blank" style="background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; transition: all 0.2s;">✉️ 簡訊發送設定</a>
+                <a href="/mobile" target="_blank" style="background: #0ea5e9; color: white; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3); transition: all 0.2s;">前往行動端</a>
+            </div>
         </div>
 
 
@@ -120,6 +123,26 @@
         </div>
     </div>
 
+    <!-- 語音來電詢問報到 Modal -->
+    <div id="voiceMentionModal" class="modal" style="background: rgba(30, 41, 59, 0.95); color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.1); width: 420px; text-align: left; padding: 25px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); font-family: 'Outfit', sans-serif;">
+        <h3 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #eab308; margin-top: 0;">
+            📞 來電語音辨識提醒
+        </h3>
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
+            來電內容：「<span id="voiceMentionText" style="color: #f8fafc; font-style: italic; font-weight: 600;"></span>」
+        </p>
+        <div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="font-size: 1.05rem; font-weight: bold; color: #f8fafc; margin-bottom: 6px;" id="voiceMentionName">病患姓名</div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">病歷號：<span id="voiceMentionRecordNo"></span></div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">床號：<span id="voiceMentionBed"></span></div>
+            <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button id="voiceMentionCheckInBtn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
+            <button onclick="closeVoiceMention()" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         let requestCount = 0;
@@ -182,7 +205,9 @@
             
             // 決定狀態樣式與背景顏色
             let statusClass = 'request-box';
-            if (p.dispatched) {
+            if (p.voice_mentioned) {
+                statusClass += ' status-voice-mentioned';
+            } else if (p.dispatched) {
                 statusClass += ' status-dispatched';
             } else if (p.checked_in) {
                 statusClass += ' status-checked-in';
@@ -225,6 +250,22 @@
             badgeContainer.style.flexDirection = 'column';
             badgeContainer.style.alignItems = 'flex-end';
             badgeContainer.style.gap = '5px';
+            
+            // 語音提到徽章
+            if (p.voice_mentioned) {
+                const voiceBadge = document.createElement('span');
+                voiceBadge.style.background = 'rgba(234, 179, 8, 0.15)';
+                voiceBadge.style.color = '#eab308';
+                voiceBadge.style.padding = '4px 8px';
+                voiceBadge.style.borderRadius = '6px';
+                voiceBadge.style.fontSize = '0.8rem';
+                voiceBadge.style.fontWeight = 'bold';
+                voiceBadge.style.display = 'flex';
+                voiceBadge.style.alignItems = 'center';
+                voiceBadge.style.gap = '4px';
+                voiceBadge.innerText = '📞 語音來電中';
+                badgeContainer.appendChild(voiceBadge);
+            }
             
             // 狀態徽章
             const badge = document.createElement('span');
@@ -698,6 +739,62 @@
         }
 
 
+
+        let activeVoiceMentionPatient = null;
+
+        socket.on('voice_mention_alert', (data) => {
+            const p = data.patient;
+            if (!p) return;
+            activeVoiceMentionPatient = p;
+
+            document.getElementById('voiceMentionText').innerText = data.text;
+            document.getElementById('voiceMentionName').innerText = p.name;
+            document.getElementById('voiceMentionRecordNo').innerText = p.record_no;
+            document.getElementById('voiceMentionBed').innerText = p.bed || '無';
+            document.getElementById('voiceMentionExam').innerText = p.exam || '無';
+
+            const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
+            checkInBtn.onclick = () => {
+                socket.emit('check_in_patient', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+                
+                socket.emit('clear_voice_mention', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+
+                closeVoiceMention();
+            };
+
+            document.getElementById('voiceMentionModal').style.display = 'block';
+            
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+                utterance.lang = 'zh-TW';
+                window.speechSynthesis.speak(utterance);
+            }
+        });
+
+        function closeVoiceMention() {
+            document.getElementById('voiceMentionModal').style.display = 'none';
+            if (activeVoiceMentionPatient) {
+                const p = activeVoiceMentionPatient;
+                socket.emit('clear_voice_mention', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+                activeVoiceMentionPatient = null;
+            }
+        }
 
         // 初始化
         fetchHistory();

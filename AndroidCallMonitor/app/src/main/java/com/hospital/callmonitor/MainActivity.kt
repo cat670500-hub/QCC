@@ -98,12 +98,18 @@ class MainActivity : AppCompatActivity() {
         val permissions = mutableListOf(
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.MODIFY_AUDIO_SETTINGS
+            Manifest.permission.MODIFY_AUDIO_SETTINGS,
+            Manifest.permission.SEND_SMS
         )
 
         // Android 9 (Pie) 或以上需要額外授權 READ_CALL_LOG 才能在廣播中讀取來電號碼
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             permissions.add(Manifest.permission.READ_CALL_LOG)
+        }
+
+        // Android 8.0 (Oreo) 或以上需要額外授權 ANSWER_PHONE_CALLS 才能自動接聽來電
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            permissions.add(Manifest.permission.ANSWER_PHONE_CALLS)
         }
 
         val neededPermissions = permissions.filter {
