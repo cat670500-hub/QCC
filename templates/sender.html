@@ -168,10 +168,16 @@
             }
         }
 
+        // 語音測試功能
+        function testSpeech() {
+            enableSpeechSession();
+            speakWithFallback("語音測試成功");
+        }
+
         // 監聽第一次點擊自動解鎖
         document.addEventListener('click', enableSpeechSession, { once: true });
 
-        // 語音播報核心 (帶有網路錯誤退回本地語音機制，防止醫院內網 Google 線上語音靜音)
+        // 語音播報核心 (帶有網路錯誤與超時退回本地語音機制，防止醫院內網 Google 線上語音靜音或卡住)
         function speakWithFallback(text) {
             if (!('speechSynthesis' in window)) return;
             
@@ -179,30 +185,71 @@
             enableSpeechSession();
             
             window.speechSynthesis.cancel();
+            
             const utterance = new SpeechSynthesisUtterance(text);
             const voice = getChineseVoice();
             
+            let timeoutId = null;
+            let started = false;
+            let fallbackTriggered = false;
+
+            const cleanUp = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+            };
+
+            const playLocalFallback = () => {
+                if (fallbackTriggered) return;
+                fallbackTriggered = true;
+                cleanUp();
+                
+                const voices = window.speechSynthesis.getVoices();
+                // 優先尋找本機/離線的中文語音
+                let localVoice = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
+                if (!localVoice) {
+                    localVoice = voices.find(v => v.lang.toLowerCase().startsWith("zh") && !v.name.toLowerCase().includes("google"));
+                }
+                
+                const retryUtterance = new SpeechSynthesisUtterance(text);
+                if (localVoice) {
+                    retryUtterance.voice = localVoice;
+                    retryUtterance.lang = localVoice.lang;
+                } else {
+                    retryUtterance.lang = 'zh-TW';
+                }
+                
+                console.log("退回本機語音播放:", retryUtterance.voice ? retryUtterance.voice.name : "系統預設");
+                window.speechSynthesis.speak(retryUtterance);
+            };
+
             if (voice) {
                 utterance.voice = voice;
                 utterance.lang = voice.lang;
                 
-                // 如果是線上 Google 語音，設定 onerror 退回本地離線語音
+                // 如果是線上 Google 語音，設定超時與錯誤退回本機離線語音
                 if (!voice.localService) {
-                    utterance.onerror = (event) => {
-                        console.warn("Google 線上語音播放失敗(可能為醫院內網阻擋)，嘗試退回本機中文語音...", event.error);
-                        const voices = window.speechSynthesis.getVoices();
-                        const localVoice = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
-                        
-                        const retryUtterance = new SpeechSynthesisUtterance(text);
-                        if (localVoice) {
-                            retryUtterance.voice = localVoice;
-                            retryUtterance.lang = localVoice.lang;
-                        } else {
-                            retryUtterance.lang = 'zh-TW';
-                        }
-                        console.log("退回本機語音播放:", retryUtterance.voice ? retryUtterance.voice.name : "系統預設");
-                        window.speechSynthesis.speak(retryUtterance);
+                    utterance.onstart = () => {
+                        started = true;
+                        cleanUp();
+                        console.log("Google 線上語音已成功開始播放");
                     };
+                    
+                    utterance.onerror = (event) => {
+                        cleanUp();
+                        if (started) return;
+                        console.warn("Google 線上語音播放失敗(或被取消)，嘗試退回本機中文語音...", event ? event.error : "");
+                        playLocalFallback();
+                    };
+
+                    timeoutId = setTimeout(() => {
+                        if (!started && !fallbackTriggered) {
+                            console.warn("Google 線上語音連線超時(可能為醫院內網阻擋)，強制取消並退回本機中文語音...");
+                            window.speechSynthesis.cancel();
+                            playLocalFallback();
+                        }
+                    }, 800);
                 }
             } else {
                 utterance.lang = 'zh-TW';
