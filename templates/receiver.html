@@ -136,10 +136,12 @@
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
-                utterance.lang = 'zh-TW';
                 const maleVoice = getChineseMaleVoice();
                 if (maleVoice) {
                     utterance.voice = maleVoice;
+                    utterance.lang = maleVoice.lang;
+                } else {
+                    utterance.lang = 'zh-TW';
                 }
                 window.speechSynthesis.speak(utterance);
             }
@@ -202,10 +204,12 @@
                 
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                utterance.lang = 'zh-TW';
                 const maleVoice = getChineseMaleVoice();
                 if (maleVoice) {
                     utterance.voice = maleVoice;
+                    utterance.lang = maleVoice.lang;
+                } else {
+                    utterance.lang = 'zh-TW';
                 }
                 window.speechSynthesis.speak(utterance);
             }
