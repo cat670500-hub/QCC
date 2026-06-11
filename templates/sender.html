@@ -16,6 +16,7 @@
                 🔗 其它單位連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; font-weight: 700; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="speechStatus" style="font-size: 0.8rem; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="enableSpeechSession()">🔇 點擊啟用語音</span>
                 {% if session.operator_account %}
                     <span style="font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
                 {% endif %}
@@ -148,6 +149,7 @@
         let requestCount = 0;
         let currentPatients = {{ patients | tojson }} || [];
         const checkInErrors = {};
+        let isSpeechEnabled = false;
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
         if ('speechSynthesis' in window) {
@@ -155,6 +157,66 @@
             window.speechSynthesis.onvoiceschanged = () => {
                 window.speechSynthesis.getVoices();
             };
+        }
+
+        // 啟用語音（由使用者點擊或操作觸發解鎖瀏覽器限制）
+        function enableSpeechSession() {
+            if (isSpeechEnabled) return;
+            isSpeechEnabled = true;
+            const badge = document.getElementById('speechStatus');
+            if (badge) {
+                badge.style.background = 'rgba(16, 185, 129, 0.15)';
+                badge.style.color = '#10b981';
+                badge.innerText = '🔊 語音已就緒';
+            }
+            // 播報空字串解鎖
+            if ('speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(u);
+            }
+        }
+
+        // 監聽第一次點擊自動解鎖
+        document.addEventListener('click', enableSpeechSession, { once: true });
+
+        // 語音播報核心 (帶有網路錯誤退回本地語音機制，防止醫院內網 Google 線上語音靜音)
+        function speakWithFallback(text) {
+            if (!('speechSynthesis' in window)) return;
+            
+            // 如果尚未解鎖，嘗試在此時解鎖
+            enableSpeechSession();
+            
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voice = getChineseVoice();
+            
+            if (voice) {
+                utterance.voice = voice;
+                utterance.lang = voice.lang;
+                
+                // 如果是線上 Google 語音，設定 onerror 退回本地離線語音
+                if (!voice.localService) {
+                    utterance.onerror = (event) => {
+                        console.warn("Google 線上語音播放失敗(可能為醫院內網阻擋)，嘗試退回本機中文語音...", event.error);
+                        const voices = window.speechSynthesis.getVoices();
+                        const localVoice = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
+                        
+                        const retryUtterance = new SpeechSynthesisUtterance(text);
+                        if (localVoice) {
+                            retryUtterance.voice = localVoice;
+                            retryUtterance.lang = localVoice.lang;
+                        } else {
+                            retryUtterance.lang = 'zh-TW';
+                        }
+                        console.log("退回本機語音播放:", retryUtterance.voice ? retryUtterance.voice.name : "系統預設");
+                        window.speechSynthesis.speak(retryUtterance);
+                    };
+                }
+            } else {
+                utterance.lang = 'zh-TW';
+            }
+            
+            window.speechSynthesis.speak(utterance);
         }
 
         // 取得中文語音 (優先使用 Google 語音，如 Google 國語)
@@ -807,18 +869,7 @@
 
             document.getElementById('voiceMentionModal').style.display = 'block';
             
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
-                const voice = getChineseVoice();
-                if (voice) {
-                    utterance.voice = voice;
-                    utterance.lang = voice.lang;
-                } else {
-                    utterance.lang = 'zh-TW';
-                }
-                window.speechSynthesis.speak(utterance);
-            }
+            speakWithFallback(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
         });
 
         function closeVoiceMention() {
