@@ -16,7 +16,7 @@
                 🔗 連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
-                <span id="speechStatus" style="font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="enableSpeechSession()">🔇 點擊啟用語音</span>
+                <span id="speechStatus" style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="enableSpeechSession()">🔊 語音已就緒</span>
                 {% if session.operator_account %}
                     <span style="font-size: 0.75rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
                 {% endif %}
@@ -57,7 +57,7 @@
     <script>
         const socket = io();
         let activeVoiceMentionPatient = null;
-        let isSpeechEnabled = false;
+        let isSpeechEnabled = true; // 預設就緒
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
         if ('speechSynthesis' in window) {
@@ -69,14 +69,6 @@
 
         // 啟用語音（由使用者點擊或操作觸發解鎖瀏覽器限制）
         function enableSpeechSession() {
-            if (isSpeechEnabled) return;
-            isSpeechEnabled = true;
-            const badge = document.getElementById('speechStatus');
-            if (badge) {
-                badge.style.background = 'rgba(16, 185, 129, 0.15)';
-                badge.style.color = '#10b981';
-                badge.innerText = '🔊 語音已就緒';
-            }
             // 播報空字串解鎖
             if ('speechSynthesis' in window) {
                 const u = new SpeechSynthesisUtterance('');
