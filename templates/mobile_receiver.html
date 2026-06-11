@@ -577,7 +577,7 @@
                 
                 newPatients.forEach(p => {
                     if (isPatientAllowed(p)) {
-                        speakNotification(`收到新派遣，病房床號：${p.bed || '未知'}，病患：${p.name}`);
+                        speakNotification(`請注意，病患 ${p.name || '無姓名'}，床號 ${p.bed || '無床號'}。病患 ${p.name || '無姓名'}，床號 ${p.bed || '無床號'}。`);
                     }
                 });
             }

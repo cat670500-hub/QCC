@@ -144,6 +144,18 @@
                 }
             }
 
+            // 語音朗誦姓名、床號，重複兩次
+            if ('speechSynthesis' in window) {
+                const name = p.name || '無姓名';
+                const bed = p.bed || '無床號';
+                const textToSpeak = `請注意，病患 ${name}，床號 ${bed}。病患 ${name}，床號 ${bed}。`;
+                
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                utterance.lang = 'zh-TW';
+                window.speechSynthesis.speak(utterance);
+            }
+
             const appNoVal = p.accession_no || p.order_no || '';
             const checkKey = p.record_no + '-' + p.exam + '-' + appNoVal;
             if (document.querySelector(`.request-box[data-key="${checkKey}"]`)) {
