@@ -247,7 +247,7 @@
         }
 
         .request-card.waiting::before {
-            background: var(--primary);
+            background: #94a3b8;
         }
 
         .request-card.confirmed {
@@ -268,6 +268,16 @@
 
         .request-card.checked-in::before {
             background: #3b82f6;
+        }
+
+        .request-card.dispatched {
+            background: rgba(139, 90, 43, 0.1);
+            border-color: rgba(139, 90, 43, 0.2);
+            opacity: 0.6;
+        }
+
+        .request-card.dispatched::before {
+            background: #8b5a2b;
         }
 
         .card-header {
@@ -633,23 +643,23 @@
             const container = document.getElementById('incomingRequests');
             container.innerHTML = '';
 
-            // 僅顯示未分派的病患且符合過濾設定 (已回覆/已確認的卡片不消失，但以 confirmed 樣式呈現)
-            const pendingPatients = activePatients.filter(p => !p.dispatched && isPatientAllowed(p));
+            // 顯示所有符合過濾設定的病患 (包含已分派，跟網頁版一致)
+            const pendingPatients = activePatients.filter(p => isPatientAllowed(p));
 
-            // 排序邏輯：未報到 (未確認) -> 已報到 (未確認) -> 已接受派遣 (已確認)
-            // 狀態優先級值：未報到未確認 (0) -> 已報到未確認 (1) -> 已確認 (2)
+            // 排序邏輯與網頁版完全相同：已報到 (0) -> 未報到 (1) -> 已分派 (2)
+            // 同一狀態下依 order_no 降序排序 (維持新單在上方)
             pendingPatients.sort((a, b) => {
                 const getPriority = (p) => {
-                    if (p.confirmed) return 2;
-                    if (p.checked_in) return 1;
-                    return 0;
+                    if (p.dispatched) return 2;
+                    if (p.checked_in) return 0;
+                    return 1;
                 };
                 
                 const priorityA = getPriority(a);
                 const priorityB = getPriority(b);
                 
                 if (priorityA !== priorityB) {
-                    return priorityA - priorityB; // 優先級小的在上面 (未報到 -> 已報到 -> 已回覆)
+                    return priorityA - priorityB; // 優先級小的在上面 (已報到 -> 未報到 -> 已分派)
                 }
                 
                 // 優先級相同，按 order_no 降序排序 (最新在最上面)
@@ -666,7 +676,9 @@
             pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
                 let cardClass = '';
-                if (p.confirmed) {
+                if (p.dispatched) {
+                    cardClass = 'request-card dispatched';
+                } else if (p.confirmed) {
                     cardClass = 'request-card confirmed';
                 } else {
                     cardClass = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
@@ -686,15 +698,26 @@
                 const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
                 
                 const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
-                const badgeText = p.checked_in ? 
-                    '<span style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">✅ 已報到</span>' : 
-                    '<span style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">🔘 未報到</span>';
+                
+                let badgeText = '';
+                if (p.dispatched) {
+                    badgeText = '<span style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📤 已分派</span>';
+                } else {
+                    badgeText = p.checked_in ? 
+                        '<span style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">✅ 已報到</span>' : 
+                        '<span style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">🔘 未報到</span>';
+                }
+                
+                let confirmedBadge = '';
+                if (p.confirmed) {
+                    confirmedBadge = '<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📥 已回覆</span>';
+                }
 
                 card.innerHTML = `
                     <div class="card-header">
                         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
                             <div class="exam-title">${p.exam}</div>
-                            <div>${badgeText}</div>
+                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${badgeText}${confirmedBadge}</div>
                         </div>
                         <div class="${bedBadgeClass}">${p.bed || '無床號'}</div>
                     </div>
@@ -703,10 +726,11 @@
                         <span>病歷號: <strong>${p.record_no}</strong></span>
                         <span>來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
                         ${p.local_dispatched && p.dispatch_time ? `<span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 4px;">📢 已於 ${p.dispatch_time} 發送通知</span>` : ''}
+                        ${p.confirmed ? `<span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold; margin-top: 4px;">✅ 接收端已回覆接受</span>` : ''}
                     </div>
                     <div class="action-container" style="display: flex; gap: 10px; width: 100%;">
-                        ${p.confirmed ? 
-                            `<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>` : 
+                        ${p.dispatched ? 
+                            `<div style="color: #8b5a2b; font-weight: 700; width:100%; text-align:center;">已分派完成</div>` : 
                             `
                             ${p.checked_in ? 
                                 `<button class="btn" style="background: var(--danger); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', false)">
