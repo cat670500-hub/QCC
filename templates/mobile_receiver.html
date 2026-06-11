@@ -930,6 +930,44 @@
             }
         }
 
+        // 取得中文男聲語音
+        function getChineseMaleVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices();
+            const maleKeywords = ["zhiwei", "kangkang", "yunxi", "yunyang", "yunjian", "male", "志偉", "智偉", "康康", "雲希", "雲揚", "雲健"];
+            
+            // 1. 先尋找繁體中文 (zh-TW) 或簡體中文 (zh-CN) 的男聲
+            for (let voice of voices) {
+                const lang = voice.lang.toLowerCase();
+                const name = voice.name.toLowerCase();
+                if (lang.includes("zh-tw") || lang.includes("zh_tw") || lang.includes("zh-cn") || lang.includes("zh_cn")) {
+                    if (maleKeywords.some(kw => name.includes(kw))) {
+                        return voice;
+                    }
+                }
+            }
+            
+            // 2. 尋找任何中文 (zh) 且名字含有男聲關鍵字的聲音
+            for (let voice of voices) {
+                const lang = voice.lang.toLowerCase();
+                const name = voice.name.toLowerCase();
+                if (lang.startsWith("zh")) {
+                    if (maleKeywords.some(kw => name.includes(kw))) {
+                        return voice;
+                    }
+                }
+            }
+            
+            // 3. 尋找任何包含 "zhiwei" 或 "kangkang" 或 "yun" 的中文聲音
+            const fallbackMale = voices.find(v => {
+                const name = v.name.toLowerCase();
+                return v.lang.toLowerCase().startsWith("zh") && (name.includes("zhiwei") || name.includes("kangkang") || name.includes("yun"));
+            });
+            if (fallbackMale) return fallbackMale;
+            
+            return null;
+        }
+
         // 語音播報核心 (TTS)
         function speakNotification(text) {
             if ('speechSynthesis' in window) {
@@ -940,6 +978,12 @@
                 utterance.lang = 'zh-TW';
                 utterance.rate = 1.0;
                 utterance.pitch = 1.0;
+                
+                const maleVoice = getChineseMaleVoice();
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                }
+                
                 window.speechSynthesis.speak(utterance);
             }
         }
