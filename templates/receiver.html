@@ -55,13 +55,21 @@
         const socket = io();
         let activeVoiceMentionPatient = null;
 
-        // 取得中文男聲語音
+        // 取得中文男聲語音 (優先使用 康康 / Kangkang)
         function getChineseMaleVoice() {
             if (!('speechSynthesis' in window)) return null;
             const voices = window.speechSynthesis.getVoices();
-            const maleKeywords = ["zhiwei", "kangkang", "yunxi", "yunyang", "yunjian", "male", "志偉", "智偉", "康康", "雲希", "雲揚", "雲健"];
             
-            // 1. 先尋找繁體中文 (zh-TW) 或簡體中文 (zh-CN) 的男聲
+            // 1. 絕對優先尋找 "kangkang" 或 "康康" 的語音 (優先考慮中文)
+            const kangkangVoice = voices.find(v => {
+                const name = v.name.toLowerCase();
+                const lang = v.lang.toLowerCase();
+                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && (name.includes("kangkang") || name.includes("康康"));
+            });
+            if (kangkangVoice) return kangkangVoice;
+            
+            // 2. 次級優先尋找其他男聲關鍵字的繁體/簡體中文語音
+            const maleKeywords = ["zhiwei", "yunxi", "yunyang", "yunjian", "male", "志偉", "智偉", "雲希", "雲揚", "雲健"];
             for (let voice of voices) {
                 const lang = voice.lang.toLowerCase();
                 const name = voice.name.toLowerCase();
@@ -72,7 +80,7 @@
                 }
             }
             
-            // 2. 尋找任何中文 (zh) 且名字含有男聲關鍵字的聲音
+            // 3. 尋找任何中文 (zh) 且名字含有男聲關鍵字的聲音
             for (let voice of voices) {
                 const lang = voice.lang.toLowerCase();
                 const name = voice.name.toLowerCase();
@@ -83,10 +91,10 @@
                 }
             }
             
-            // 3. 尋找任何包含 "zhiwei" 或 "kangkang" 或 "yun" 的中文聲音
+            // 4. 尋找任何包含 "zhiwei" 或 "yun" 的中文聲音
             const fallbackMale = voices.find(v => {
                 const name = v.name.toLowerCase();
-                return v.lang.toLowerCase().startsWith("zh") && (name.includes("zhiwei") || name.includes("kangkang") || name.includes("yun"));
+                return v.lang.toLowerCase().startsWith("zh") && (name.includes("zhiwei") || name.includes("yun"));
             });
             if (fallbackMale) return fallbackMale;
             
