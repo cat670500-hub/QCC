@@ -421,11 +421,7 @@
         {% endif %}
     </div>
 
-    <!-- 接收病房設定 -->
-    <div style="background: var(--panel-bg); backdrop-filter: blur(10px); border: 1px solid var(--border-glow); padding: 15px; border-radius: 16px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
-        <label for="wardFilter" style="font-size: 0.9rem; font-weight: bold; color: var(--text-main); display: flex; align-items: center; gap: 6px;">⚙️ 接收病房設定</label>
-        <input type="text" id="wardFilter" placeholder="例如：11B, 6C (空白表示接收全部)" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';" oninput="saveWardFilter()">
-    </div>
+
 
     <!-- 搜尋與重整區塊 -->
     <div style="background: var(--panel-bg); backdrop-filter: blur(10px); border: 1px solid var(--border-glow); padding: 15px; border-radius: 16px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
@@ -473,32 +469,8 @@
         const socket = io();
         let activePatients = [];
 
-        // 載入 localStorage 中的病房設定
-        function loadWardFilter() {
-            const filter = localStorage.getItem('receiver_ward_filter');
-            if (filter !== null) {
-                const input = document.getElementById('wardFilter');
-                if (input) input.value = filter;
-            }
-        }
-
-        // 儲存病房設定至 localStorage 並立即重新過濾渲染
-        function saveWardFilter() {
-            const filter = document.getElementById('wardFilter').value;
-            localStorage.setItem('receiver_ward_filter', filter);
-            renderPatients();
-        }
-
         // 檢查病患是否符合過濾設定
         function isPatientAllowed(p) {
-            const filterVal = document.getElementById('wardFilter') ? document.getElementById('wardFilter').value.trim() : '';
-            if (filterVal) {
-                const allowedWards = filterVal.split(',').map(w => w.trim().toLowerCase()).filter(w => w !== '');
-                if (allowedWards.length > 0) {
-                    const bed = (p.bed || '').trim().toLowerCase();
-                    return allowedWards.some(ward => bed.includes(ward));
-                }
-            }
             return true;
         }
         
@@ -544,7 +516,6 @@
 
         // 系統初始化
         window.addEventListener('load', () => {
-            loadWardFilter();
             loadSearchQuery();
             initSpeechRecognition();
             registerServiceWorker();
