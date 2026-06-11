@@ -149,6 +149,39 @@
         let currentPatients = {{ patients | tojson }} || [];
         const checkInErrors = {};
 
+        // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
+        // 取得中文語音 (優先使用 Google 語音，如 Google 國語)
+        function getChineseVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length === 0) return null;
+            
+            // 1. 絕對優先尋找包含 "google" 的中文語音 (例如 Google 國語)
+            const googleVoice = voices.find(v => {
+                const name = v.name.toLowerCase();
+                const lang = v.lang.toLowerCase();
+                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && name.includes("google");
+            });
+            if (googleVoice) return googleVoice;
+            
+            // 2. 次要尋找任何本機/離線的中文語音
+            const localZh = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
+            if (localZh) return localZh;
+            
+            // 3. 最後尋找任何中文語音
+            const anyZh = voices.find(v => v.lang.toLowerCase().startsWith("zh"));
+            if (anyZh) return anyZh;
+            
+            return null;
+        }
+
         function sendRequest(btn) {
             requestCount++;
             const patient = {
@@ -777,7 +810,13 @@
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
-                utterance.lang = 'zh-TW';
+                const voice = getChineseVoice();
+                if (voice) {
+                    utterance.voice = voice;
+                    utterance.lang = voice.lang;
+                } else {
+                    utterance.lang = 'zh-TW';
+                }
                 window.speechSynthesis.speak(utterance);
             }
         });

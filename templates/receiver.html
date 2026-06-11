@@ -55,6 +55,14 @@
         const socket = io();
         let activeVoiceMentionPatient = null;
 
+        // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
         // 取得中文語音 (優先使用 Google 語音，如 Google 國語)
         function getChineseVoice() {
             if (!('speechSynthesis' in window)) return null;

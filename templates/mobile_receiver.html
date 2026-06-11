@@ -490,6 +490,14 @@
         const socket = io();
         let activePatients = [];
 
+        // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
         // 檢查病患是否符合過濾設定
         function isPatientAllowed(p) {
             return true;
