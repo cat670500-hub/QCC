@@ -613,11 +613,6 @@
                 }
                 
                 speakNotification(`已接受${p.name}的派遣`);
-                
-                setTimeout(() => {
-                    card.remove();
-                    fetchPatients();
-                }, 3000);
             }
         });
 
@@ -638,8 +633,30 @@
             const container = document.getElementById('incomingRequests');
             container.innerHTML = '';
 
-            // 僅顯示未分派且未確認的病患且符合過濾設定
-            const pendingPatients = activePatients.filter(p => !p.dispatched && !p.confirmed && isPatientAllowed(p));
+            // 僅顯示未分派的病患且符合過濾設定 (已回覆/已確認的卡片不消失，但以 confirmed 樣式呈現)
+            const pendingPatients = activePatients.filter(p => !p.dispatched && isPatientAllowed(p));
+
+            // 排序邏輯：未報到 (未確認) -> 已報到 (未確認) -> 已接受派遣 (已確認)
+            // 狀態優先級值：未報到未確認 (0) -> 已報到未確認 (1) -> 已確認 (2)
+            pendingPatients.sort((a, b) => {
+                const getPriority = (p) => {
+                    if (p.confirmed) return 2;
+                    if (p.checked_in) return 1;
+                    return 0;
+                };
+                
+                const priorityA = getPriority(a);
+                const priorityB = getPriority(b);
+                
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB; // 優先級小的在上面 (未報到 -> 已報到 -> 已回覆)
+                }
+                
+                // 優先級相同，按 order_no 降序排序 (最新在最上面)
+                const orderA = a.order_no || '';
+                const orderB = b.order_no || '';
+                return orderB.localeCompare(orderA);
+            });
 
             if (pendingPatients.length === 0) {
                 container.innerHTML = '<div class="no-data">目前無待處理的派遣單</div>';
@@ -648,7 +665,12 @@
 
             pendingPatients.forEach((p) => {
                 const card = document.createElement('div');
-                let cardClass = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
+                let cardClass = '';
+                if (p.confirmed) {
+                    cardClass = 'request-card confirmed';
+                } else {
+                    cardClass = p.checked_in ? 'request-card waiting checked-in' : 'request-card waiting';
+                }
                 if (p.source === '急診') {
                     cardClass += ' er-card';
                 }
@@ -683,17 +705,22 @@
                         ${p.local_dispatched && p.dispatch_time ? `<span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 4px;">📢 已於 ${p.dispatch_time} 發送通知</span>` : ''}
                     </div>
                     <div class="action-container" style="display: flex; gap: 10px; width: 100%;">
-                        ${p.checked_in ? 
-                            `<button class="btn" style="background: var(--danger); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', false)">
-                                ❌ 取消報到
-                             </button>` : 
-                            `<button class="btn" style="background: var(--primary); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', true)">
-                                📋 報到
-                             </button>`
+                        ${p.confirmed ? 
+                            `<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>` : 
+                            `
+                            ${p.checked_in ? 
+                                `<button class="btn" style="background: var(--danger); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', false)">
+                                    ❌ 取消報到
+                                 </button>` : 
+                                `<button class="btn" style="background: var(--primary); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', true)">
+                                    📋 報到
+                                 </button>`
+                            }
+                            <button class="btn btn-success" onclick="manualSend('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
+                                 ${p.local_dispatched ? '✔️ 再次發送' : '✔️ 發送'}
+                            </button>
+                            `
                         }
-                        <button class="btn btn-success" onclick="manualSend('${p.record_no}', '${p.accession_no || ''}', '${p.order_no || ''}')">
-                             ${p.local_dispatched ? '✔️ 再次發送' : '✔️ 發送'}
-                        </button>
                     </div>
                 `;
                 container.appendChild(card);
@@ -863,11 +890,6 @@
                 card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
                 
                 speakNotification(`已接受${p.name}的派遣`);
-                
-                setTimeout(() => {
-                    card.remove();
-                    fetchPatients();
-                }, 3000);
             }
         }
 
@@ -1053,11 +1075,6 @@
                         card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已回報 10 分鐘後抵達</div>';
                         
                         speakNotification(`好的，已回報十分鐘後抵達，並接受${p.name}的單`);
-                        
-                        setTimeout(() => {
-                            card.remove();
-                            fetchPatients();
-                        }, 3000);
                     }
                 } else {
                     speakNotification("目前沒有待處理的派遣單");
