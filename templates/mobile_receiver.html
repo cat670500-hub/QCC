@@ -651,9 +651,9 @@
             pendingPatients.sort((a, b) => {
                 const getPriority = (p) => {
                     if (p.dispatched) return 3;
-                    if (p.local_dispatched) return 0; // 已通知最優先置頂
-                    if (p.checked_in) return 1;       // 已報到次之
-                    return 2;                         // 未報到再次之
+                    if (p.checked_in) return 0;       // 1. 已報到 (且未分派) 最優先
+                    if (p.local_dispatched) return 1; // 2. 已發送通知 (已通知) 次之
+                    return 2;                         // 3. 未報到 (且未分派) 再次之
                 };
                 
                 const priorityA = getPriority(a);
