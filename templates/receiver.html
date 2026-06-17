@@ -23,6 +23,12 @@
             </div>
         </div>
 
+        <!-- 語音播報鎖定警告 -->
+        <div id="speechLockBanner" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; font-size: 0.85rem; font-weight: bold; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <span>⚠️ 瀏覽器語音播放目前被鎖定！請點擊頁面任意處，或點按右側解鎖，以啟用自動語音播報。</span>
+            <button onclick="unlockSpeech()" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; font-weight: bold; cursor: pointer; white-space: nowrap;">點選解鎖</button>
+        </div>
+
         <!-- 接收病房設定 -->
         <div style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; text-align: left; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1;">
@@ -58,6 +64,9 @@
         const socket = io();
         let activeVoiceMentionPatient = null;
         let isSpeechEnabled = true; // 預設就緒
+        let googleVoiceFailed = false; // 記錄 Google 語音是否失效，失效則自動直接使用本地語音，省去超時等待
+        let activeSpeechTimeout = null; // 用於控制第二次播報的間隔時間
+        let activeAnnouncementId = 0; // 用於避免新舊播報排程衝突的唯一識別
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
         if ('speechSynthesis' in window) {
@@ -76,26 +85,117 @@
             }
         }
 
-        // 監聽第一次點擊自動解鎖
-        document.addEventListener('click', enableSpeechSession, { once: true });
+        function unlockSpeech() {
+            enableSpeechSession();
+            const banner = document.getElementById('speechLockBanner');
+            if (banner) banner.style.display = 'none';
+            speakWithFallback("自動語音播報功能已啟用");
+        }
+
+        // 監聽第一次點擊自動解鎖並隱藏警告條
+        document.addEventListener('click', () => {
+            enableSpeechSession();
+            const banner = document.getElementById('speechLockBanner');
+            if (banner) banner.style.display = 'none';
+        }, { once: true });
+
+        // 使用 Web Audio API 播放高級警示聲響 (無須任何外部音訊檔)
+        function playAlertChime() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                
+                // 第一個音符 (C5)
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(523.25, ctx.currentTime);
+                gain1.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                
+                // 第二個音符 (E5，延遲 0.2 秒)
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(659.25, ctx.currentTime + 0.2);
+                gain2.gain.setValueAtTime(0, ctx.currentTime);
+                gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.2);
+                gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                
+                // 第三個音符 (G5，延遲 0.4 秒)
+                const osc3 = ctx.createOscillator();
+                const gain3 = ctx.createGain();
+                osc3.type = 'sine';
+                osc3.frequency.setValueAtTime(783.99, ctx.currentTime + 0.4);
+                gain3.gain.setValueAtTime(0, ctx.currentTime);
+                gain3.gain.setValueAtTime(0.15, ctx.currentTime + 0.4);
+                gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
+                osc3.connect(gain3);
+                gain3.connect(ctx.destination);
+                
+                // 第四個音符 (高音 C6，延遲 0.6 秒)
+                const osc4 = ctx.createOscillator();
+                const gain4 = ctx.createGain();
+                osc4.type = 'sine';
+                osc4.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.6);
+                gain4.gain.setValueAtTime(0, ctx.currentTime);
+                gain4.gain.setValueAtTime(0.15, ctx.currentTime + 0.6);
+                gain4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.2);
+                osc4.connect(gain4);
+                gain4.connect(ctx.destination);
+                
+                osc1.start();
+                osc1.stop(ctx.currentTime + 1.2);
+                osc2.start(ctx.currentTime + 0.2);
+                osc2.stop(ctx.currentTime + 1.5);
+                osc3.start(ctx.currentTime + 0.4);
+                osc3.stop(ctx.currentTime + 1.8);
+                osc4.start(ctx.currentTime + 0.6);
+                osc4.stop(ctx.currentTime + 2.2);
+            } catch (e) {
+                console.error("無法播放警示聲響:", e);
+            }
+        }
 
         // 語音測試功能
         function testSpeech() {
             enableSpeechSession();
-            speakWithFallback("語音測試成功");
+            playAlertChime();
+            setTimeout(() => {
+                speakWithFallback("語音測試成功");
+            }, 1800);
         }
 
         // 語音播報核心 (帶有網路錯誤與超時退回本地語音機制，防止醫院內網 Google 線上語音靜音或卡住)
-        function speakWithFallback(text) {
-            if (!('speechSynthesis' in window)) return;
+        function speakWithFallback(text, callback) {
+            if (!('speechSynthesis' in window)) {
+                if (callback) callback();
+                return;
+            }
             
             // 如果尚未解鎖，嘗試在此時解鎖
             enableSpeechSession();
             
             window.speechSynthesis.cancel();
             
-            const utterance = new SpeechSynthesisUtterance(text);
             const voice = getChineseVoice();
+            const isGoogle = voice && voice.name.toLowerCase().includes("google");
+            
+            // 決定播報的文字：為配合使用者需求，直接使用原英文 "portable"，移除所有中英文標點符號以消除所有停頓，僅保留英數字必要空格
+            let targetText = text;
+            
+            // 移除所有中英文標點符號以消除所有停頓，僅保留英數字必要空格
+            targetText = targetText.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+            targetText = targetText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+            targetText = targetText.replace(/\s+/g, ' ').trim();
+            
+            const utterance = new SpeechSynthesisUtterance(targetText);
+            utterance.rate = 0.75;
             
             let timeoutId = null;
             let started = false;
@@ -120,13 +220,26 @@
                     localVoice = voices.find(v => v.lang.toLowerCase().startsWith("zh") && !v.name.toLowerCase().includes("google"));
                 }
                 
-                const retryUtterance = new SpeechSynthesisUtterance(text);
+                // 本地降級播放亦保留英文 "portable"
+                let localText = text;
+                localText = localText.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+                localText = localText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+                localText = localText.replace(/\s+/g, ' ').trim();
+                const retryUtterance = new SpeechSynthesisUtterance(localText);
+                retryUtterance.rate = 0.75;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;
                 } else {
                     retryUtterance.lang = 'zh-TW';
                 }
+                
+                retryUtterance.onend = () => {
+                    if (callback) callback();
+                };
+                retryUtterance.onerror = () => {
+                    if (callback) callback();
+                };
                 
                 console.log("退回本機語音播放:", retryUtterance.voice ? retryUtterance.voice.name : "系統預設");
                 window.speechSynthesis.speak(retryUtterance);
@@ -144,23 +257,51 @@
                         console.log("Google 線上語音已成功開始播放");
                     };
                     
+                    utterance.onend = () => {
+                        cleanUp();
+                        if (callback) callback();
+                    };
+                    
                     utterance.onerror = (event) => {
                         cleanUp();
-                        if (started) return;
+                        if (started) {
+                            if (callback) callback();
+                            return;
+                        }
                         console.warn("Google 線上語音播放失敗(或被取消)，嘗試退回本機中文語音...", event ? event.error : "");
-                        playLocalFallback();
+                        googleVoiceFailed = true; // 標記為失效，後續直接使用本地語音
+                        window.speechSynthesis.cancel();
+                        setTimeout(() => {
+                            playLocalFallback();
+                        }, 100);
                     };
 
                     timeoutId = setTimeout(() => {
                         if (!started && !fallbackTriggered) {
                             console.warn("Google 線上語音連線超時(可能為醫院內網阻擋)，強制取消並退回本機中文語音...");
+                            googleVoiceFailed = true; // 標記為失效，後續直接使用本地語音
                             window.speechSynthesis.cancel();
-                            playLocalFallback();
+                            setTimeout(() => {
+                                playLocalFallback();
+                            }, 100);
                         }
-                    }, 800);
+                    }, 1500); // 1.5秒超時即退回本地語音，避免長時間靜音
+                } else {
+                    utterance.onend = () => {
+                        if (callback) callback();
+                    };
+                    utterance.onerror = () => {
+                        if (callback) callback();
+                    };
                 }
             } else {
                 utterance.lang = 'zh-TW';
+                utterance.onend = () => {
+                    if (callback) callback();
+                };
+                utterance.onerror = () => {
+                    if (callback) callback();
+                };
             }
             
             window.speechSynthesis.speak(utterance);
@@ -173,12 +314,14 @@
             if (voices.length === 0) return null;
             
             // 1. 絕對優先尋找包含 "google" 的中文語音 (例如 Google 國語)
-            const googleVoice = voices.find(v => {
-                const name = v.name.toLowerCase();
-                const lang = v.lang.toLowerCase();
-                return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && name.includes("google");
-            });
-            if (googleVoice) return googleVoice;
+            if (!googleVoiceFailed) {
+                const googleVoice = voices.find(v => {
+                    const name = v.name.toLowerCase();
+                    const lang = v.lang.toLowerCase();
+                    return (lang.startsWith("zh") || lang.includes("tw") || lang.includes("cn")) && name.includes("google");
+                });
+                if (googleVoice) return googleVoice;
+            }
             
             // 2. 次要尋找任何本機/離線的中文語音
             const localZh = voices.find(v => v.localService && v.lang.toLowerCase().startsWith("zh"));
@@ -222,8 +365,6 @@
             };
 
             document.getElementById('voiceMentionModal').style.display = 'block';
-            
-            speakWithFallback(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
         });
 
         function closeVoiceMention() {
@@ -275,11 +416,44 @@
                 }
             }
 
-            // 語音朗誦姓名、床號，重複兩次 (將英文單字 "Portable" 前後加空格，使用單一語音物件朗讀以維持聲音一致且無停頓)
+            // 語音朗誦姓名、床號，重複三次，每次播報前皆加入警示聲，中間有間隔 (若使用 Google 語音會直接唸 "portable"，若使用本機離線語音則會自動改唸中文諧音 "坡特波" 以維持同一個人聲)
             const name = p.name || '無姓名';
             const bed = p.bed || '無床號';
-            const textToSpeak = `請注意，床號 ${bed}，病患 ${name}， Portable 要來了。請注意，床號 ${bed}，病患 ${name}， Portable 要來了。`;
-            speakWithFallback(textToSpeak);
+            const textToSpeak = `請注意床號 ${bed} 病患 ${name} portable 要來了`;
+            
+            activeAnnouncementId++;
+            const currentId = activeAnnouncementId;
+            
+            if (activeSpeechTimeout) {
+                clearTimeout(activeSpeechTimeout);
+                activeSpeechTimeout = null;
+            }
+            
+            let speakCount = 0;
+            function playSpeechLoop() {
+                if (currentId !== activeAnnouncementId) return;
+                
+                // 每次播報前皆播放警示聲響
+                playAlertChime();
+                
+                // 於警示聲響播放完畢後 (1.8秒後) 啟動該次語音播報
+                activeSpeechTimeout = setTimeout(() => {
+                    if (currentId !== activeAnnouncementId) return;
+                    
+                    speakWithFallback(textToSpeak, () => {
+                        if (currentId !== activeAnnouncementId) return;
+                        
+                        speakCount++;
+                        if (speakCount < 3) {
+                            // 播報完畢後等待 1.5 秒再進行下一輪 (包含下一次的警示聲)
+                            activeSpeechTimeout = setTimeout(playSpeechLoop, 1500);
+                        }
+                    });
+                }, 1800);
+            }
+            
+            // 立即開始第一輪 (警示聲+語音)
+            playSpeechLoop();
 
             const appNoVal = p.accession_no || p.order_no || '';
             const checkKey = p.record_no + '-' + p.exam + '-' + appNoVal;

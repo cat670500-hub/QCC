@@ -597,21 +597,6 @@
 
         // 監聽後端推播新名單
         socket.on('patients_updated', (data) => {
-            const container = document.getElementById('incomingRequests');
-            
-            // 判斷是否有「新增」的病患，如果有，就播放語音通知
-            if (data.length > activePatients.length) {
-                // 找出哪些是原本沒有的病患
-                const oldKeys = activePatients.map(p => p.record_no);
-                const newPatients = data.filter(p => !oldKeys.includes(p.record_no));
-                
-                newPatients.forEach(p => {
-                    if (isPatientAllowed(p)) {
-                        speakNotification(`請注意，床號 ${p.bed || '無床號'}，病患 ${p.name || '無姓名'}， Portable 要來了。請注意，床號 ${p.bed || '無床號'}，病患 ${p.name || '無姓名'}， Portable 要來了。`);
-                    }
-                });
-            }
-            
             activePatients = data;
             renderPatients();
         });
@@ -993,8 +978,14 @@
             enableSpeechSession();
             
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 1.0;
+            
+            // 移除所有中英文標點符號以消除所有停頓，僅保留英數字必要空格
+            let cleanedText = text.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+            cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+            cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+            
+            const utterance = new SpeechSynthesisUtterance(cleanedText);
+            utterance.rate = 0.75;
             utterance.pitch = 1.0;
             
             const voice = getChineseVoice();
@@ -1022,8 +1013,11 @@
                     localVoice = voices.find(v => v.lang.toLowerCase().startsWith("zh") && !v.name.toLowerCase().includes("google"));
                 }
                 
-                const retryUtterance = new SpeechSynthesisUtterance(text);
-                retryUtterance.rate = 1.0;
+                let cleanedText = text.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+                cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+                cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+                const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
+                retryUtterance.rate = 0.75;
                 retryUtterance.pitch = 1.0;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;

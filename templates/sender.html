@@ -16,7 +16,7 @@
                 🔗 其它單位連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; font-weight: 700; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="speechStatus" style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="enableSpeechSession()">🔊 語音已就緒</span>
+                <span id="speechStatus" style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
                 {% if session.operator_account %}
                     <span style="font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
                 {% endif %}
@@ -168,10 +168,76 @@
             }
         }
 
+        // 使用 Web Audio API 播放高級警示聲響 (無須 any 外部音訊檔)
+        function playAlertChime() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                
+                // 第一個音符 (C5)
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(523.25, ctx.currentTime);
+                gain1.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                
+                // 第二個音符 (E5，延遲 0.2 秒)
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(659.25, ctx.currentTime + 0.2);
+                gain2.gain.setValueAtTime(0, ctx.currentTime);
+                gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.2);
+                gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                
+                // 第三個音符 (G5，延遲 0.4 秒)
+                const osc3 = ctx.createOscillator();
+                const gain3 = ctx.createGain();
+                osc3.type = 'sine';
+                osc3.frequency.setValueAtTime(783.99, ctx.currentTime + 0.4);
+                gain3.gain.setValueAtTime(0, ctx.currentTime);
+                gain3.gain.setValueAtTime(0.15, ctx.currentTime + 0.4);
+                gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
+                osc3.connect(gain3);
+                gain3.connect(ctx.destination);
+                
+                // 第四個音符 (高音 C6，延遲 0.6 秒)
+                const osc4 = ctx.createOscillator();
+                const gain4 = ctx.createGain();
+                osc4.type = 'sine';
+                osc4.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.6);
+                gain4.gain.setValueAtTime(0, ctx.currentTime);
+                gain4.gain.setValueAtTime(0.15, ctx.currentTime + 0.6);
+                gain4.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.2);
+                osc4.connect(gain4);
+                gain4.connect(ctx.destination);
+                
+                osc1.start();
+                osc1.stop(ctx.currentTime + 1.2);
+                osc2.start(ctx.currentTime + 0.2);
+                osc2.stop(ctx.currentTime + 1.5);
+                osc3.start(ctx.currentTime + 0.4);
+                osc3.stop(ctx.currentTime + 1.8);
+                osc4.start(ctx.currentTime + 0.6);
+                osc4.stop(ctx.currentTime + 2.2);
+            } catch (e) {
+                console.error("無法播放警示聲響:", e);
+            }
+        }
+
         // 語音測試功能
         function testSpeech() {
             enableSpeechSession();
-            speakWithFallback("語音測試成功");
+            playAlertChime();
+            setTimeout(() => {
+                speakWithFallback("語音測試成功");
+            }, 1800);
         }
 
         // 監聽第一次點擊自動解鎖
@@ -186,7 +252,13 @@
             
             window.speechSynthesis.cancel();
             
-            const utterance = new SpeechSynthesisUtterance(text);
+            // 移除所有中英文標點符號以消除所有停頓，僅保留英數字必要空格
+            let cleanedText = text.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+            cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+            cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+            
+            const utterance = new SpeechSynthesisUtterance(cleanedText);
+            utterance.rate = 0.75;
             const voice = getChineseVoice();
             
             let timeoutId = null;
@@ -212,7 +284,11 @@
                     localVoice = voices.find(v => v.lang.toLowerCase().startsWith("zh") && !v.name.toLowerCase().includes("google"));
                 }
                 
-                const retryUtterance = new SpeechSynthesisUtterance(text);
+                let cleanedText = text.replace(/[，。、；：？！,\.\/\\#\$\%\^\&\*\(\)\_\+\=\{\}\[\]\|\:\;\"\'\<\>\?`~！＠＃＄％＾＆＊（）—＋\s]+/g, ' ');
+                cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
+                cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+                const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
+                retryUtterance.rate = 0.75;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;
@@ -908,7 +984,10 @@
 
             document.getElementById('voiceMentionModal').style.display = 'block';
             
-            speakWithFallback(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+            playAlertChime();
+            setTimeout(() => {
+                speakWithFallback(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+            }, 1800);
         });
 
         function closeVoiceMention() {

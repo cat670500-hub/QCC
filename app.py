@@ -332,6 +332,9 @@ def index():
                 <a href="/sender" style="text-decoration: none;">
                     <button style="width: 100%;">前往發送端 (Sender)</button>
                 </a>
+                <a href="/mobile" style="text-decoration: none;">
+                    <button style="width: 100%;">前往手機發送端 (Mobile)</button>
+                </a>
                 <a href="/receiver" style="text-decoration: none;">
                     <button style="width: 100%;">前往接收端 (Receiver)</button>
                 </a>
