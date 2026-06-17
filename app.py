@@ -735,6 +735,7 @@ def handle_request(data):
                 p['local_dispatched'] = True
                 p['dispatch_time'] = now_str
                 p['custom_message'] = custom_message
+                p['voice_mentioned'] = False
                 break
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
@@ -810,6 +811,7 @@ def handle_check_in(data):
             
         if match:
             p['checked_in'] = True
+            p['voice_mentioned'] = False
             if p_acc:
                 accession_no = p_acc
             break
@@ -868,6 +870,7 @@ def handle_cancel_check_in(data):
             
         if match:
             p['checked_in'] = False
+            p['voice_mentioned'] = False
             if p_acc:
                 accession_no = p_acc
             break

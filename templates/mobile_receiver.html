@@ -1241,37 +1241,7 @@
         let activeVoiceMentionPatient = null;
 
         socket.on('voice_mention_alert', (data) => {
-            const p = data.patient;
-            if (!p) return;
-            activeVoiceMentionPatient = p;
-
-            document.getElementById('voiceMentionText').innerText = data.text;
-            document.getElementById('voiceMentionName').innerText = p.name;
-            document.getElementById('voiceMentionRecordNo').innerText = p.record_no;
-            document.getElementById('voiceMentionBed').innerText = p.bed || '無';
-            document.getElementById('voiceMentionExam').innerText = p.exam || '無';
-
-            const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
-            checkInBtn.onclick = () => {
-                socket.emit('check_in_patient', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-                
-                socket.emit('clear_voice_mention', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-
-                closeVoiceMention();
-            };
-
-            document.getElementById('voiceMentionModal').style.display = 'block';
-            speakNotification(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+            console.log("[語音來電] 已配對病患:", data.patient.name, "行動端不彈出確認視窗且不播報語音。");
         });
 
         function closeVoiceMention() {

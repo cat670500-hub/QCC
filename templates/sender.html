@@ -57,7 +57,7 @@
             
             <div id="patientListDiv" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; max-height: 480px; overflow-y: auto; padding: 10px;">
                 {% for p in patients %}
-                {% set status_class = 'status-dispatched' if p.dispatched else ('status-checked-in' if p.checked_in else 'status-unchecked-in') %}
+                {% set status_class = 'status-voice-mentioned' if p.voice_mentioned else ('status-dispatched' if p.dispatched else ('status-checked-in' if p.checked_in else 'status-unchecked-in')) %}
                 {% set er_class = ' er-card' if p.source == '急診' else '' %}
                 {% set app_no = p.accession_no[:-5] if p.accession_no and p.accession_no|length > 5 else p.order_no %}
                 <div class="request-box {{ status_class }}{{ er_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
@@ -75,6 +75,9 @@
                             {% endif %}
                         </span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            {% if p.voice_mentioned %}
+                                <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="點擊清除語音標記" onclick="socket.emit('clear_voice_mention', { record_no: '{{ p.record_no }}', exam: '{{ p.exam }}', accession_no: '{{ p.accession_no or "" }}', order_no: '{{ p.order_no or "" }}' })">📞 語音來電中 ✕</span>
+                            {% endif %}
                             {% if p.dispatched %}
                                 <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
                             {% elif p.checked_in %}
@@ -479,7 +482,18 @@
                 voiceBadge.style.display = 'flex';
                 voiceBadge.style.alignItems = 'center';
                 voiceBadge.style.gap = '4px';
-                voiceBadge.innerText = '📞 語音來電中';
+                voiceBadge.style.cursor = 'pointer';
+                voiceBadge.title = '點擊清除語音標記';
+                voiceBadge.innerText = '📞 語音來電中 ✕';
+                voiceBadge.onclick = (e) => {
+                    e.stopPropagation();
+                    socket.emit('clear_voice_mention', {
+                        record_no: p.record_no,
+                        exam: p.exam,
+                        accession_no: p.accession_no || '',
+                        order_no: p.order_no || ''
+                    });
+                };
                 badgeContainer.appendChild(voiceBadge);
             }
             
@@ -964,41 +978,7 @@
         let activeVoiceMentionPatient = null;
 
         socket.on('voice_mention_alert', (data) => {
-            const p = data.patient;
-            if (!p) return;
-            activeVoiceMentionPatient = p;
-
-            document.getElementById('voiceMentionText').innerText = data.text;
-            document.getElementById('voiceMentionName').innerText = p.name;
-            document.getElementById('voiceMentionRecordNo').innerText = p.record_no;
-            document.getElementById('voiceMentionBed').innerText = p.bed || '無';
-            document.getElementById('voiceMentionExam').innerText = p.exam || '無';
-
-            const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
-            checkInBtn.onclick = () => {
-                socket.emit('check_in_patient', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-                
-                socket.emit('clear_voice_mention', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-
-                closeVoiceMention();
-            };
-
-            document.getElementById('voiceMentionModal').style.display = 'block';
-            
-            playAlertChime();
-            setTimeout(() => {
-                speakWithFallback(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
-            }, 1800);
+            console.log("[語音來電] 已配對病患:", data.patient.name, "已透過名單更新變更卡片顏色。");
         });
 
         function closeVoiceMention() {
