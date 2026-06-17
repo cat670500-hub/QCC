@@ -466,7 +466,7 @@ def voice_dispatch():
                 matched_patient = p
                 break
                 
-    # 3. 如果找到了配對的病患，標記語音提到並廣播彈窗通知，由操作人員決定是否報到
+    # 3. 如果找到了配對的病患，標記語音提到並更新清單，使其以黃色高亮顯示
     if matched_patient:
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
         matched_exam = str(matched_patient.get('exam', '')).strip()
@@ -489,8 +489,8 @@ def voice_dispatch():
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
         
-        # 廣播彈窗事件
-        print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，發送彈窗廣播。")
+        # 廣播更新事件 (供行動端等其它頁面接收狀態)
+        print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，更新卡片高亮狀態。")
         socketio.emit('voice_mention_alert', {
             'patient': matched_patient,
             'text': text

@@ -1010,7 +1010,7 @@
             .then(data => {
                 if (data.status === 'success') {
                     if (data.matched) {
-                        alert(`[模擬成功] 已配對病患: ${data.patient.name}，已廣播彈窗提醒！`);
+                        alert(`[模擬成功] 已配對病患: ${data.patient.name}，卡片已高亮顯示為黃色！`);
                     } else {
                         alert(`[模擬成功但未配對] 語音內容: "${text}"\n原因: ${data.message}`);
                     }
