@@ -42,6 +42,10 @@
                     <span id="voiceMicIcon">🎙️</span> <span id="voiceBtnText">啟用語音控制</span>
                 </button>
                 
+                <button id="mockVoiceCallBtn" onclick="simulateVoiceCall()" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; border-radius: 8px; padding: 10px 16px; color: white; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.2); display: flex; align-items: center; gap: 6px; transition: all 0.2s;">
+                    <span>📞</span> <span>模擬來電語音</span>
+                </button>
+                
                 <span id="voiceStatus" style="font-size: 0.9rem; color: #64748b; font-weight: 500; font-style: italic;">💡 支援語音：「[病患姓名/病歷號] + 報到 / 取消報到 / 發送」</span>
             </div>
             
@@ -1002,6 +1006,35 @@
                 });
                 activeVoiceMentionPatient = null;
             }
+        }
+
+        function simulateVoiceCall() {
+            const text = prompt("請輸入模擬來電語音對話內容（例如：王大同要辦理報到）：", "王大同要辦理報到");
+            if (!text) return;
+            
+            fetch('/api/voice_dispatch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: text })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    if (data.matched) {
+                        alert(`[模擬成功] 已配對病患: ${data.patient.name}，已廣播彈窗提醒！`);
+                    } else {
+                        alert(`[模擬成功但未配對] 語音內容: "${text}"\n原因: ${data.message}`);
+                    }
+                } else {
+                    alert(`[模擬失敗] ${data.message}`);
+                }
+            })
+            .catch(err => {
+                console.error("模擬語音對話失敗:", err);
+                alert("模擬發送失敗，請檢查主程式是否在線。");
+            });
         }
 
         // 初始化
