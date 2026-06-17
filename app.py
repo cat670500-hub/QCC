@@ -299,6 +299,32 @@ def log_dispatch(patient_info, time_str):
     except Exception as e:
         print(f"[警告] 寫入發送日誌失敗: {e}")
 
+def log_voice_call(text, matched_patient=None):
+    try:
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        if matched_patient:
+            name = matched_patient.get('name', '未知')
+            rec_no = matched_patient.get('record_no', '未知')
+            bed = matched_patient.get('bed', '無')
+            log_line = f"[{time_str}] 語音:「{text}」 | 已配對: {name} ({rec_no}) - 床號: {bed}\n"
+        else:
+            log_line = f"[{time_str}] 語音:「{text}」 | 未配對病患\n"
+        with open("voice_calls.log", "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        print(f"[警告] 寫入語音來電日誌失敗: {e}")
+
+def get_voice_logs_list():
+    log_file = "voice_calls.log"
+    if not os.path.exists(log_file):
+        return []
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        return [line.strip() for line in lines[-100:]]
+    except Exception:
+        return []
+
 def sort_patients(patients):
     """排序病患：語音提到 (最上端) -> 已報到 (次之) -> 未報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
     # 穩定排序：先依單號降序 (新單在上)
@@ -468,6 +494,7 @@ def voice_dispatch():
                 
     # 3. 如果找到了配對的病患，標記語音提到並更新清單，使其以黃色高亮顯示
     if matched_patient:
+        log_voice_call(text, matched_patient)
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
         matched_exam = str(matched_patient.get('exam', '')).strip()
         matched_acc = str(matched_patient.get('accession_no', '')).strip()
@@ -488,6 +515,7 @@ def voice_dispatch():
                 
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
+        socketio.emit('voice_logs_updated', get_voice_logs_list())
         
         # 廣播更新事件 (供行動端等其它頁面接收狀態)
         print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，更新卡片高亮狀態。")
@@ -503,6 +531,8 @@ def voice_dispatch():
             "action": "voice_mentioned"
         })
         
+    log_voice_call(text, None)
+    socketio.emit('voice_logs_updated', get_voice_logs_list())
     return jsonify({
         "status": "success", 
         "matched": False, 
@@ -581,9 +611,13 @@ def get_local_errors():
     except Exception as e:
         return jsonify([f"讀取日誌失敗: {e}"])
 
+@app.route('/api/voice_logs', methods=['GET'])
+def get_voice_logs():
+    return jsonify(get_voice_logs_list())
+
 @app.route('/api/clear_errors', methods=['POST'])
 def clear_errors():
-    for log_file in ["sync_errors.log", "check_in_errors.log"]:
+    for log_file in ["sync_errors.log", "check_in_errors.log", "voice_calls.log"]:
         try:
             if os.path.exists(log_file):
                 with open(log_file, "w", encoding="utf-8") as f:

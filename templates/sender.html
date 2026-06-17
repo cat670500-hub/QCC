@@ -117,6 +117,12 @@
                 </ul>
             </div>
             <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
+                <h3 style="font-size: 1.1rem; color: #eab308; margin-bottom: 10px;">📞 語音來電紀錄</h3>
+                <ul id="voiceLogList"
+                    style="font-size: 0.9rem; color: #d97706; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0;">
+                </ul>
+            </div>
+            <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
                 <h3 style="font-size: 1.1rem; color: #ef4444; margin-bottom: 10px;">⚠️ 醫院同步失敗日誌</h3>
                 <ul id="syncErrorList"
                     style="font-size: 0.9rem; color: #ef4444; max-height: 150px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
@@ -956,16 +962,45 @@
                 .catch(err => console.error("獲取本機錯誤日誌失敗:", err));
         }
 
-        // 清除所有錯誤日誌紀錄
+        // 載入語音來電紀錄
+        function fetchVoiceLogs() {
+            fetch('/api/voice_logs')
+                .then(res => res.json())
+                .then(data => {
+                    renderVoiceLogs(data);
+                })
+                .catch(err => console.error("獲取語音日誌失敗:", err));
+        }
+
+        function renderVoiceLogs(data) {
+            const list = document.getElementById('voiceLogList');
+            list.innerHTML = '';
+            if (data.length === 0) {
+                const li = document.createElement('li');
+                li.innerText = '目前無語音來電紀錄';
+                li.style.color = '#10b981';
+                list.appendChild(li);
+                return;
+            }
+            data.forEach(line => {
+                const li = document.createElement('li');
+                li.innerText = line.trim();
+                list.appendChild(li);
+            });
+            list.scrollTop = list.scrollHeight;
+        }
+
+        // 清除所有錯誤與語音日誌紀錄
         function clearErrorLogs() {
-            if (!confirm("確定要清除伺服器與本機的所有錯誤日誌紀錄嗎？")) return;
+            if (!confirm("確定要清除所有紀錄與日誌嗎？")) return;
             fetch('/api/clear_errors', { method: 'POST' })
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
                         fetchSyncErrors();
                         fetchLocalErrors();
-                        alert("已成功清除所有錯誤日誌！");
+                        fetchVoiceLogs();
+                        alert("已成功清除所有日誌與紀錄！");
                     } else {
                         alert("清除失敗: " + data.message);
                     }
@@ -973,12 +1008,14 @@
                 .catch(err => console.error("清除日誌發生錯誤:", err));
         }
 
-
-
         let activeVoiceMentionPatient = null;
 
         socket.on('voice_mention_alert', (data) => {
             console.log("[語音來電] 已配對病患:", data.patient.name, "已透過名單更新變更卡片顏色。");
+        });
+
+        socket.on('voice_logs_updated', (data) => {
+            renderVoiceLogs(data);
         });
 
         function closeVoiceMention() {
@@ -1028,6 +1065,7 @@
         fetchHistory();
         fetchSyncErrors();
         fetchLocalErrors();
+        fetchVoiceLogs();
     </script>
 </body>
 
