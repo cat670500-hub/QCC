@@ -435,8 +435,16 @@
             <span id="connectionText">連線中...</span>
         </div>
     </div>
+
+    <!-- iOS PWA Warning Banner -->
+    <div id="iosPwaWarning" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); padding: 12px 20px; border-radius: 12px; margin-bottom: 15px; font-size: 0.85rem; text-align: left; color: #f87171; font-weight: bold; line-height: 1.5;">
+        ⚠️ <strong>iOS 系統安全限制提示</strong><br>
+        偵測到您在 iOS 的「加到主畫面」App 模式下執行。由於 iOS 系統限制，在此模式下瀏覽器會<strong>強制停用麥克風與語音指令</strong>。<br>
+        請改用<strong>一般 Safari 瀏覽器</strong>開啟此網頁網址，即可正常使用語音控制。
+    </div>
+
     <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; color: #10b981; font-weight: bold;">
-        <span>🔗 系統連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a></span>
+        <span>🔗 系統連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a></span>
         <div style="display: flex; gap: 6px; align-items: center;">
             <span id="speechStatus" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
             {% if session.operator_account %}
@@ -454,7 +462,7 @@
             <button id="refreshBtn" onclick="manualRefresh()" style="background: var(--primary); border: none; border-radius: 10px; padding: 6px 14px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: bold; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">🔄 重新整理</button>
         </div>
         <div style="position: relative; width: 100%;">
-            <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入姓名/病歷/床號/檢查進行篩選..." style="width: 100%; padding: 10px 40px 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';">
+            <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入姓名/病歷/床號/檢查/申請單號進行篩選..." style="width: 100%; padding: 10px 40px 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.3s;" onfocus="this.style.borderColor='var(--primary)';" onblur="this.style.borderColor='rgba(255,255,255,0.1)';">
             <button id="clearSearchBtn" onclick="clearSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; display: none; align-items: center; justify-content: center; width: 24px; height: 24px; outline: none; -webkit-appearance: none;">✕</button>
         </div>
     </div>
@@ -571,6 +579,24 @@
             initSpeechRecognition();
             registerServiceWorker();
             initPullToRefresh();
+            
+            // 檢查 iOS PWA (standalone) 模式
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+            if (isIOS && isStandalone) {
+                const iosWarning = document.getElementById('iosPwaWarning');
+                if (iosWarning) {
+                    iosWarning.style.display = 'block';
+                }
+            }
+            
+            // 檢查安全來源限制並給予提示
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                const voiceStatus = document.getElementById('voiceStatus');
+                if (voiceStatus) {
+                    voiceStatus.innerHTML = '<span style="color: var(--danger); font-weight: bold;">⚠️ 瀏覽器基於 HTTP 安全限制已停用麥克風</span><br><span style="font-size: 0.75rem; color: var(--text-muted);">Android 用戶請至 Chrome 設定 chrome://flags 允許此 IP</span>';
+                }
+            }
         });
 
         // 註冊 PWA Service Worker
@@ -704,8 +730,11 @@
                 card.setAttribute('data-name', p.name);
                 card.setAttribute('data-bed', p.bed || '');
                 card.setAttribute('data-exam', p.exam || '');
+                card.setAttribute('data-accession', p.accession_no || '');
+                card.setAttribute('data-order', p.order_no || '');
                 
-                const isER = p.bed === '急診';
+                const isER = p.source === '急診' || p.bed === '急診';
+                const bedDisplay = isER ? '急診' : (p.bed || '無床號');
                 const bedBadgeClass = isER ? 'bed-badge er' : 'bed-badge';
                 
                 const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
@@ -735,7 +764,7 @@
                             <div class="exam-title">${p.exam}</div>
                             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${voiceMentionBadge}${badgeText}${confirmedBadge}</div>
                         </div>
-                        <div class="${bedBadgeClass}">${p.bed || '無床號'}</div>
+                        <div class="${bedBadgeClass}">${bedDisplay}</div>
                     </div>
                     <div class="patient-info">
                         <span>姓名: <strong>${p.name}</strong></span>
@@ -809,7 +838,7 @@
             }
         }
 
-        // 快速篩選病歷號、姓名、床號與檢查項目
+        // 快速篩選病歷號、姓名、床號、檢查項目與申請單號
         function filterPatients() {
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
             localStorage.setItem('receiver_search_query', query); // 保存搜尋關鍵字
@@ -823,11 +852,15 @@
                 const name = card.getAttribute('data-name') || '';
                 const bed = card.getAttribute('data-bed') || '';
                 const exam = card.getAttribute('data-exam') || '';
+                const accession = card.getAttribute('data-accession') || '';
+                const order = card.getAttribute('data-order') || '';
                 
                 if (recordNo.toLowerCase().includes(query) || 
                     name.toLowerCase().includes(query) ||
                     bed.toLowerCase().includes(query) ||
-                    exam.toLowerCase().includes(query)) {
+                    exam.toLowerCase().includes(query) ||
+                    accession.toLowerCase().includes(query) ||
+                    order.toLowerCase().includes(query)) {
                     card.style.display = ''; // 顯示符合條件的卡片
                 } else {
                     card.style.display = 'none'; // 隱藏不符合的卡片
@@ -970,10 +1003,43 @@
             return null;
         }
 
+        let wasListeningBeforeSpeaking = false;
+        let resumeTimeoutId = null;
+
+        function checkAndResumeSpeech() {
+            if (wasListeningBeforeSpeaking) {
+                wasListeningBeforeSpeaking = false;
+                if (resumeTimeoutId) clearTimeout(resumeTimeoutId);
+                resumeTimeoutId = setTimeout(() => {
+                    if (recognition && !isListening) {
+                        isListening = true;
+                        try {
+                            recognition.start();
+                            console.log("語音播報結束，已自動恢復語音辨識監聽。");
+                        } catch (e) {
+                            console.error("重啟語音辨識失敗:", e);
+                        }
+                    }
+                }, 500); // 500ms 延遲以釋放音訊通道
+            }
+        }
+
         // 語音播報核心 (TTS，帶有網路錯誤與超時退回本地語音機制，防止醫院內網 Google 線上語音靜音或卡住)
         function speakNotification(text) {
             if (!('speechSynthesis' in window)) return;
             
+            // 如果語音辨識正在運行，先暫停它，避免語音播放衝突與自食其聲
+            if (isListening && recognition) {
+                wasListeningBeforeSpeaking = true;
+                isListening = false;
+                try {
+                    recognition.stop();
+                    console.log("偵測到語音播報，暫時關閉語音辨識錄音...");
+                } catch (e) {
+                    console.error("暫停語音辨識失敗:", e);
+                }
+            }
+
             // 如果尚未解鎖，嘗試在此時解鎖
             enableSpeechSession();
             
@@ -988,6 +1054,21 @@
             utterance.rate = 0.75;
             utterance.pitch = 1.0;
             
+            utterance.onend = () => {
+                cleanUp();
+                checkAndResumeSpeech();
+            };
+            
+            utterance.onerror = (event) => {
+                cleanUp();
+                if (started) {
+                    checkAndResumeSpeech();
+                } else {
+                    console.warn("Google 線上語音播放失敗(或被取消)，嘗試退回本機中文語音...", event ? event.error : "");
+                    playLocalFallback();
+                }
+            };
+
             const voice = getChineseVoice();
             
             let timeoutId = null;
@@ -1026,6 +1107,13 @@
                     retryUtterance.lang = 'zh-TW';
                 }
                 
+                retryUtterance.onend = () => {
+                    checkAndResumeSpeech();
+                };
+                retryUtterance.onerror = () => {
+                    checkAndResumeSpeech();
+                };
+
                 console.log("退回本機語音播放:", retryUtterance.voice ? retryUtterance.voice.name : "系統預設");
                 window.speechSynthesis.speak(retryUtterance);
             };
@@ -1042,13 +1130,6 @@
                         console.log("Google 線上語音已成功開始播放");
                     };
                     
-                    utterance.onerror = (event) => {
-                        cleanUp();
-                        if (started) return;
-                        console.warn("Google 線上語音播放失敗(或被取消)，嘗試退回本機中文語音...", event ? event.error : "");
-                        playLocalFallback();
-                    };
-
                     timeoutId = setTimeout(() => {
                         if (!started && !fallbackTriggered) {
                             console.warn("Google 線上語音連線超時(可能為醫院內網阻擋)，強制取消並退回本機中文語音...");
@@ -1063,8 +1144,6 @@
             
             window.speechSynthesis.speak(utterance);
         }
-
-
 
         // 語音辨識核心 (STT)
         function initSpeechRecognition() {
@@ -1100,7 +1179,15 @@
                 // 如果是使用者主動關閉，就不重啟；如果是系統自動超時中斷，就自動重啟
                 if (isListening) {
                     console.log('語音監聽超時自動重啟...');
-                    recognition.start();
+                    setTimeout(() => {
+                        if (isListening) {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                console.error("重啟語音監聽失敗:", e);
+                            }
+                        }
+                    }, 400); // 延遲 400ms
                 } else {
                     document.getElementById('micBtn').classList.remove('listening');
                     document.getElementById('voiceStatus').innerText = '點擊麥克風啟用語音指令';
@@ -1127,8 +1214,8 @@
 
         function startSpeech() {
             if (recognition) {
-                isListening = true;
-                recognition.start();
+                // 先播放語音提示，並在播報結束後自動啟動語音監聽
+                wasListeningBeforeSpeaking = true;
                 speakNotification("語音控制已啟用");
             }
         }
@@ -1136,7 +1223,10 @@
         function stopSpeech() {
             if (recognition) {
                 isListening = false;
-                recognition.stop();
+                wasListeningBeforeSpeaking = false;
+                try {
+                    recognition.stop();
+                } catch(e) {}
                 speakNotification("語音控制已關閉");
             }
         }
@@ -1151,6 +1241,17 @@
                 if (text.includes(p.name) || text.includes(p.record_no)) {
                     matchedPatient = p;
                     break;
+                }
+            }
+            
+            // 如果沒匹配到，用床號進行模糊比對
+            if (!matchedPatient) {
+                for (let p of activePatients) {
+                    let pBed = (p.bed || '').trim();
+                    if (pBed && pBed !== "(無病房資料)" && pBed.length >= 2 && text.includes(pBed.toLowerCase())) {
+                        matchedPatient = p;
+                        break;
+                    }
                 }
             }
             

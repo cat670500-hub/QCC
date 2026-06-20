@@ -5,6 +5,8 @@ import time
 import datetime
 import requests
 import socketio
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Flask 系統的網址
 FLASK_API_URL = os.environ.get("FLASK_API_URL", "http://127.0.0.1:5000/api/update_patients")
@@ -91,7 +93,7 @@ def handle_agent_check_in(data):
             print("[代理端] 同步成功，正在立即刷新醫院實時病患清單...")
             raw_items = fetch_live_patients(token)
             patients = parse_patients(raw_items)
-            requests.post(FLASK_API_URL, json=patients, timeout=5)
+            requests.post(FLASK_API_URL, json=patients, verify=False, timeout=5)
             print("[代理端] 已成功更新最新病患狀態清單！")
         except Exception as ex:
             print(f"[代理端警告] 同步成功後自動刷新名單發生錯誤: {ex}")
@@ -362,10 +364,11 @@ def parse_patients(raw_items):
                 raw_check_in_time = item.get('CheckInTime')
                 is_checked_in = (status == '21' or (raw_check_in_time is not None and str(raw_check_in_time).strip() != ""))
                 
+                final_bed = "急診" if source == "急診" else (bed_str if bed_str else "(無病房資料)")
                 extracted_patients.append({
                     "name": pname,
                     "record_no": pid,
-                    "bed": bed_str if bed_str else "(無病房資料)",
+                    "bed": final_bed,
                     "exam": proc_name,
                     "source": source if source else "住院",
                     "accession_no": accession_no,
@@ -387,7 +390,7 @@ def run_scraper():
     try:
         if not sio.connected:
             sio.connect(flask_base)
-            print(f"[代理端] 已成功嘗試連線至主伺服器 WebSocket: {flask_base}")
+            print(f"[代理端] 已成功連線至主伺服器: {flask_base}")
     except Exception as e:
         print(f"[代理端警告] 無法即時連線主伺服器 WebSocket: {e}，將僅依賴原本的 10 秒輪詢機制同步。")
         
@@ -432,7 +435,7 @@ def run_scraper():
             print(f"[成功] 實時取得成功！共撈取到 {len(patients)} 筆符合條件 (醫令或重症病房) 的今日病患。")
             
             # 4. 同步至 Flask 主系統
-            response = requests.post(FLASK_API_URL, json=patients, timeout=5)
+            response = requests.post(FLASK_API_URL, json=patients, verify=False, timeout=5)
             if response.status_code == 200:
                 print("[同步] 成功同步實時名單至主系統平台！")
             else:
@@ -442,7 +445,7 @@ def run_scraper():
             flask_base = FLASK_API_URL.rsplit('/api/', 1)[0] if '/api/' in FLASK_API_URL else FLASK_API_URL.rstrip('/')
             pending_url = f"{flask_base}/api/pending_check_ins"
             try:
-                pending_resp = requests.get(pending_url, timeout=5)
+                pending_resp = requests.get(pending_url, verify=False, timeout=5)
                 if pending_resp.status_code == 200:
                     pending_tasks = pending_resp.json()
                     if pending_tasks:

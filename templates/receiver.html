@@ -13,7 +13,7 @@
         <h1>接收端</h1>
         <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left;">
             <span style="color: #10b981; font-weight: bold;">
-                🔗 連線網址：<a href="http://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">http://{{ host_ip }}:{{ port }}/</a>
+                🔗 連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
                 <span id="speechStatus" style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>

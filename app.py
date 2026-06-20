@@ -1,4 +1,97 @@
 import sys
+
+# 優先啟動 gevent 猴子補丁以支援協程，徹底避免 Windows 環境下 HTTPS / Socket.IO 的執行緒死鎖問題
+has_gevent = False
+if not getattr(sys, 'frozen', False):
+    try:
+        from gevent import monkey
+        monkey.patch_all()
+        print("[系統] 已啟用 gevent 協程與猴子補丁支援！")
+        has_gevent = True
+        
+        # 覆寫 gevent Hub 的錯誤處理以靜音 SSL 自簽憑證警告所引發的 SSLError 堆疊追蹤
+        try:
+            from gevent.hub import Hub
+            original_handle_error = Hub.handle_error
+            
+            def custom_hub_handle_error(self, context, type, value, tb):
+                import ssl
+                # 判斷是否為 SSL 握手相關錯誤（例如手機端不信任自簽憑證產生的 sslv3 alert 警告）
+                if type is not None and (issubclass(type, ssl.SSLError) or "SSLError" in type.__name__ or "sslv3 alert" in str(value)):
+                    # 已靜音自簽憑證未授信之握手錯誤，不輸出任何日誌以避免洗版
+                    return
+                return original_handle_error(self, context, type, value, tb)
+                
+            Hub.handle_error = custom_hub_handle_error
+            print("[系統] 已啟用 gevent 全域 SSL 錯誤抑制機制！")
+        except Exception as e:
+            print(f"[系統警告] 啟用 gevent 全域 SSL 錯誤抑制失敗: {e}")
+            
+        # 啟用 SSL 雙模 (HTTP + HTTPS 同埠相容與自動重定向) 支援
+        try:
+            import gevent.server
+            import socket
+            import ssl
+            from urllib.parse import urlparse
+            
+            original_wrap_socket_and_handle = gevent.server.StreamServer.wrap_socket_and_handle
+            
+            def custom_wrap_socket_and_handle(self, client_socket, address):
+                if hasattr(self, 'wrap_socket'):
+                    first_byte = b''
+                    try:
+                        # 協程非阻塞 Socket 必須等待資料可讀再進行 peek，以防直接返回 BlockingIOError (b'')
+                        # 使用較長超時時間 (30 秒) 以容納瀏覽器預連線 (speculative connection)
+                        from gevent.select import select
+                        ready = select([client_socket], [], [], 30.0)
+                        if ready[0]:
+                            first_byte = client_socket.recv(1, socket.MSG_PEEK)
+                        else:
+                            first_byte = b''
+                    except Exception:
+                        first_byte = b''
+                    
+                    # 若為預建連線超時、斷線或無資料發送，直接關閉 socket 並返回，避免進入 SSL 握手導致拋出 SSLError
+                    if not first_byte:
+                        try:
+                            client_socket.close()
+                        except Exception:
+                            pass
+                        return
+                    
+                    if first_byte != b'\x16' and first_byte != b'\x80':
+                        # 說明是明文 HTTP 請求，直接以明文處理，不再強制進行 HTTPS 重定向。
+                        # 這可以讓不支援或無法信任自簽憑證的手機 Chrome 正常登入與使用系統。
+                        try:
+                            self.handle(client_socket, address)
+                        except Exception as e:
+                            print(f"[系統雙模錯誤] 處理明文請求失敗: {e}")
+                        return
+                
+                try:
+                    return original_wrap_socket_and_handle(self, client_socket, address)
+                except ssl.SSLError as e:
+                    # 靜音常見的 SSL 握手錯誤（例如自簽憑證未被手機信任），避免日誌洗版
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
+                    return
+                except Exception as e:
+                    # 靜音其他連線例外
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
+                    return
+                
+            gevent.server.StreamServer.wrap_socket_and_handle = custom_wrap_socket_and_handle
+            print("[系統] 已啟用 SSL 雙模並存與錯誤抑制機制！")
+        except Exception as e:
+            print(f"[系統警告] 啟用 SSL 雙模相容失敗: {e}")
+    except ImportError:
+        pass
+
 import os
 import threading
 import time
@@ -48,8 +141,12 @@ else:
 
 app.config['SECRET_KEY'] = os.environ.get('TPRIS_PASSWORD', 'hospital-secret!')
 
-# 明確指定 async_mode='threading' 避免 PyInstaller 打包後找不到非同步驅動
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+if has_gevent:
+    # 協程模式下，原生支援 WebSocket 連線，不需限制為 polling 模式
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+else:
+    # 執行緒模式下限制為 polling 模式，避免 Windows SSL 握手死鎖
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', transports=['polling'])
 
 def get_local_ip():
     try:
@@ -68,7 +165,8 @@ def get_local_ip():
 def inject_host_info():
     return {
         'host_ip': get_local_ip(),
-        'port': 5000
+        'port': 5000,
+        'protocol': request.scheme
     }
 
 @app.before_request
@@ -370,7 +468,32 @@ def index():
     </html>
     '''
 
-patients_data = []
+patients_data = [
+    {
+        "name": "王大同",
+        "record_no": "12345678",
+        "bed": "11B01",
+        "exam": "Chest(AP)Portable",
+        "source": "住院",
+        "accession_no": "ACC12345678",
+        "order_no": "ORD12345678",
+        "checked_in": False,
+        "dispatched": False,
+        "voice_mentioned": False
+    },
+    {
+        "name": "李小美",
+        "record_no": "87654321",
+        "bed": "急診",
+        "exam": "KUB",
+        "source": "急診",
+        "accession_no": "ACC87654321",
+        "order_no": "ORD87654321",
+        "checked_in": False,
+        "dispatched": False,
+        "voice_mentioned": False
+    }
+]
 
 @app.route('/sender')
 def sender():
@@ -459,6 +582,28 @@ def get_pending_check_ins():
     pending_hospital_check_ins.clear()
     return jsonify(check_ins)
 
+def is_fuzzy_name_match(text, patient_name):
+    """
+    模糊比對中文姓名，容許語音辨識同音字誤差 (如「李小美」與「李小妹」比對)
+    """
+    if not text or not patient_name:
+        return False
+    text = str(text).lower()
+    patient_name = str(patient_name).lower()
+    
+    if patient_name in text:
+        return True
+        
+    name_len = len(patient_name)
+    if name_len >= 2:
+        for i in range(len(text) - name_len + 1):
+            sub_str = text[i:i+name_len]
+            match_count = sum(1 for a, b in zip(sub_str, patient_name) if a == b)
+            threshold = name_len if name_len == 2 else name_len - 1
+            if match_count >= threshold:
+                return True
+    return False
+
 @app.route('/api/voice_dispatch', methods=['POST'])
 def voice_dispatch():
     global patients_data
@@ -488,11 +633,19 @@ def voice_dispatch():
     if not matched_patient:
         for p in patients_data:
             p_name = str(p.get('name', '')).strip()
-            if p_name and p_name in text:
+            if p_name and is_fuzzy_name_match(text, p_name):
                 matched_patient = p
                 break
                 
-    # 3. 如果找到了配對的病患，標記語音提到並更新清單，使其以黃色高亮顯示
+    # 3. 如果姓名也沒配對到，用床號比對
+    if not matched_patient:
+        for p in patients_data:
+            p_bed = str(p.get('bed', '')).strip()
+            if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and p_bed.lower() in text.lower():
+                matched_patient = p
+                break
+                
+    # 4. 如果找到了配對的病患，標記語音提到並更新清單，使其以黃色高亮顯示
     if matched_patient:
         log_voice_call(text, matched_patient)
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
@@ -935,11 +1088,44 @@ if __name__ == '__main__':
     if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         print("=> 正在準備啟動系統...")
         
+        # 檢查並清理佔用 port 5000 的程序，避免 WinError 10048 錯誤
+        def kill_port_owner(port):
+            import subprocess
+            import os
+            import time
+            try:
+                cmd = "netstat -ano"
+                result = subprocess.check_output(cmd, shell=True).decode('utf-8', errors='ignore')
+                pids = set()
+                for line in result.split('\n'):
+                    if f":{port}" in line and "LISTENING" in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            try:
+                                pids.add(int(pid))
+                            except ValueError:
+                                pass
+                
+                current_pid = os.getpid()
+                for pid in pids:
+                    if pid != current_pid and pid > 0:
+                        print(f"[系統] 偵測到連接埠 {port} 被其它程序 (PID: {pid}) 佔用，正在嘗試自動強制結束該程序以釋放連接埠...")
+                        subprocess.call(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        time.sleep(1.5) # 等待作業系統釋放埠口
+            except Exception as e:
+                print(f"[系統警告] 無法自動釋放佔用的連接埠: {e}")
+
+        kill_port_owner(5000)
+        
         # 使用 Thread 啟動爬蟲，避免 PyInstaller subprocess 產生 fork bomb
         from scraper import run_scraper
         def background_scraper():
             time.sleep(3) # 等待 Flask 啟動
             try:
+                # 若啟用 SSL，動態修改爬蟲的對接 API URL 為 HTTPS 模式
+                if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+                    os.environ["FLASK_API_URL"] = "https://127.0.0.1:5000/api/update_patients"
                 run_scraper()
             except Exception as e:
                 print(f"爬蟲執行發生錯誤: {e}")
@@ -949,9 +1135,24 @@ if __name__ == '__main__':
         # 自動開啟網頁
         def open_browser():
             time.sleep(4)
-            webbrowser.open("http://127.0.0.1:5000/")
+            proto = 'https' if (os.path.exists('cert.pem') and os.path.exists('key.pem')) else 'http'
+            webbrowser.open(f"{proto}://127.0.0.1:5000/")
         threading.Thread(target=open_browser, daemon=True).start()
 
     # 在正式打包環境中，關閉 debug 模式會更穩定
-    is_debug = not getattr(sys, 'frozen', False)
-    socketio.run(app, host='0.0.0.0', port=5000, debug=is_debug, allow_unsafe_werkzeug=True)
+    is_debug = False
+    
+    ssl_cert = 'cert.pem'
+    ssl_key = 'key.pem'
+    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+        print(f"[系統] 偵測到 SSL 憑證，將以安全連線 (HTTPS) 模式啟動主伺服器！")
+        if has_gevent:
+            # gevent 需要傳入 ssl.SSLContext 物件而非路徑元組
+            import ssl
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(certfile=ssl_cert, keyfile=ssl_key)
+            socketio.run(app, host='0.0.0.0', port=5000, debug=is_debug, ssl_context=context)
+        else:
+            socketio.run(app, host='0.0.0.0', port=5000, debug=is_debug, allow_unsafe_werkzeug=True, ssl_context=(ssl_cert, ssl_key))
+    else:
+        socketio.run(app, host='0.0.0.0', port=5000, debug=is_debug, allow_unsafe_werkzeug=True)
