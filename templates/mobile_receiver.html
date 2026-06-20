@@ -488,8 +488,8 @@
     <div class="tip-card">
         <h4>🎤 支援的語音指令</h4>
         <p>
-            • 說出「<strong>接受</strong>」、「<strong>收到了</strong>」：直接接受第一筆派遣單。<br>
-            • 說出「<strong>十分鐘到</strong>」、「<strong>10分鐘到</strong>」：確認派單並回報抵達時間。<br>
+            • 說出「<strong>[姓名/病歷/床號] 報到</strong>」或「<strong>[姓名/病歷/床號] 取消報到</strong>」：辦理或取消特定病患報到。<br>
+            • 說出「<strong>[姓名/病歷/床號] 發送</strong>」：發送特定病患的派遣通知。<br>
             • 說出「<strong>重新整理</strong>」：立刻更新清單。
         </p>
     </div>
@@ -1264,9 +1264,6 @@
                 } else if (text.includes("發送") || text.includes("派遣") || text.includes("送單") || text.includes("傳送")) {
                     manualSend(matchedPatient.record_no, accNo, ordNo);
                     return;
-                } else if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
-                    manualConfirm(matchedPatient.record_no, accNo, ordNo);
-                    return;
                 } else {
                     // 如果只說了名字，預設為發送
                     manualSend(matchedPatient.record_no, accNo, ordNo);
@@ -1287,46 +1284,7 @@
                 return;
             }
             
-            // 指令二：接受 / 確認 / 收到了
-            if (text.includes("接受") || text.includes("確認") || text.includes("收到了") || text.includes("同意")) {
-                const pendingPatients = activePatients.filter(p => !p.dispatched);
-                if (pendingPatients.length > 0) {
-                    // 接受第一筆 (最上面)
-                    const p = pendingPatients[0];
-                    manualConfirm(p.record_no, p.accession_no || '', p.order_no || '');
-                } else {
-                    speakNotification("目前沒有待處理的派遣單");
-                }
-                return;
-            }
 
-            // 指令二：十分鐘到 / 10分鐘到
-            if (text.includes("十分鐘") || text.includes("10分鐘") || text.includes("10分")) {
-                const pendingPatients = activePatients.filter(p => !p.dispatched);
-                if (pendingPatients.length > 0) {
-                    const p = pendingPatients[0];
-                    const reqId = 'REQ-MOB-' + Date.now();
-                    
-                    // 發送並確認
-                    socket.emit('send_request', { id: reqId, patient: p });
-                    setTimeout(() => {
-                        socket.emit('confirm_request', { id: reqId });
-                    }, 200);
-
-                    // 視覺回饋
-                    const uniqueReqNo = p.accession_no || p.order_no || '';
-                    const card = document.getElementById(`CARD-${p.record_no}-${uniqueReqNo}`);
-                    if (card) {
-                        card.className = 'request-card confirmed';
-                        card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已回報 10 分鐘後抵達</div>';
-                        
-                        speakNotification(`好的，已回報十分鐘後抵達，並接受${p.name}的單`);
-                    }
-                } else {
-                    speakNotification("目前沒有待處理的派遣單");
-                }
-                return;
-            }
 
             // 指令三：重新整理 / 刷新 / 重整
             if (text.includes("重新整理") || text.includes("刷新") || text.includes("重整") || text.includes("更新")) {
