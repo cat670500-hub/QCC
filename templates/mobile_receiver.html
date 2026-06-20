@@ -102,27 +102,26 @@
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border-glow);
-            border-radius: 24px;
-            padding: 25px;
+            border-radius: 16px;
+            padding: 12px 18px;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
             gap: 15px;
-            margin-bottom: 25px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
         .mic-container {
             position: relative;
-            width: 90px;
-            height: 90px;
-            margin: 10px 0;
+            width: 48px;
+            height: 48px;
+            flex-shrink: 0;
         }
 
         .mic-button {
-            width: 90px;
-            height: 90px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             background: linear-gradient(135deg, #0ea5e9, #0284c7);
             border: none;
@@ -130,22 +129,22 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 24px var(--primary-glow);
+            box-shadow: 0 4px 12px var(--primary-glow);
             z-index: 2;
             position: relative;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .mic-button svg {
-            width: 36px;
-            height: 36px;
+            width: 22px;
+            height: 22px;
             fill: white;
             transition: transform 0.3s ease;
         }
 
         .mic-button.listening {
             background: linear-gradient(135deg, #10b981, #059669);
-            box-shadow: 0 8px 24px var(--success-glow);
+            box-shadow: 0 4px 12px var(--success-glow);
         }
 
         .mic-button.listening svg {
@@ -186,21 +185,17 @@
         }
 
         .voice-instruction {
-            font-size: 1.1rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: var(--text-main);
         }
 
         .voice-log {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
-            min-height: 20px;
             font-style: italic;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 8px 16px;
-            border-radius: 12px;
-            width: 100%;
             word-break: break-all;
+            margin-top: 2px;
         }
 
         /* 待發送派遣清單 */
@@ -477,8 +472,10 @@
             </button>
             <div class="pulse-ring"></div>
         </div>
-        <div id="voiceStatus" class="voice-instruction">點擊上方麥克風啟用語音指令</div>
-        <div id="voiceTranscription" class="voice-log">聽到的指令會即時顯示在此...</div>
+        <div style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0; text-align: left;">
+            <div id="voiceStatus" class="voice-instruction">點擊麥克風啟用語音指令</div>
+            <div id="voiceTranscription" class="voice-log">聽到的指令會即時顯示在此...</div>
+        </div>
     </div>
 
     <!-- 派遣清單 -->
