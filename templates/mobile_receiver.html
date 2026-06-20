@@ -412,6 +412,38 @@
             background-color: rgba(239, 68, 68, 0.15) !important;
             box-shadow: 0 4px 20px rgba(239, 68, 68, 0.1) !important;
         }
+
+        /* 語音來電詢問報到 Modal 樣式 */
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            display: none; /* 預設隱藏 */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        #voiceMentionModal.minimized {
+            top: auto !important;
+            bottom: env(safe-area-inset-bottom, 20px) !important;
+            left: 50% !important;
+            transform: translate(-50%, 0) !important;
+            width: calc(100% - 40px) !important;
+            max-width: 420px !important;
+            padding: 12px 20px !important;
+            border-radius: 16px !important;
+            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        #voiceMentionModal.minimized #voiceMentionBody {
+            display: none !important;
+        }
+
+        #voiceMentionModal.minimized #voiceMentionHeader {
+            margin-bottom: 0 !important;
+            width: 100% !important;
+        }
     </style>
 </head>
 
@@ -1305,13 +1337,87 @@
         }
 
         let activeVoiceMentionPatient = null;
+        let isVoiceMentionMinimized = false;
 
         socket.on('voice_mention_alert', (data) => {
-            console.log("[語音來電] 已配對病患:", data.patient.name, "行動端不彈出確認視窗且不播報語音。");
+            const p = data.patient;
+            if (!p) return;
+            activeVoiceMentionPatient = p;
+
+            document.getElementById('voiceMentionText').innerText = data.text || '';
+            document.getElementById('voiceMentionName').innerText = p.name;
+            document.getElementById('voiceMentionRecordNo').innerText = p.record_no;
+            document.getElementById('voiceMentionBed').innerText = p.bed || '無';
+            document.getElementById('voiceMentionExam').innerText = p.exam || '無';
+
+            const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
+            checkInBtn.onclick = () => {
+                socket.emit('check_in_patient', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+                
+                socket.emit('clear_voice_mention', {
+                    record_no: p.record_no,
+                    exam: p.exam,
+                    accession_no: p.accession_no || '',
+                    order_no: p.order_no || ''
+                });
+
+                closeVoiceMention();
+            };
+
+            const modal = document.getElementById('voiceMentionModal');
+            modal.style.display = 'block';
+            
+            // 預設為展開狀態
+            isVoiceMentionMinimized = false;
+            modal.classList.remove('minimized');
+            document.getElementById('voiceMentionMinimizeBtn').innerText = '➖';
+            document.getElementById('voiceMentionMinimizeBtn').title = '最小化';
+            document.getElementById('voiceMentionTitleText').innerText = '來電語音辨識提醒';
+
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+                utterance.lang = 'zh-TW';
+                window.speechSynthesis.speak(utterance);
+            }
         });
+
+        function toggleMinimizeVoiceMention() {
+            const modal = document.getElementById('voiceMentionModal');
+            const btn = document.getElementById('voiceMentionMinimizeBtn');
+            const titleText = document.getElementById('voiceMentionTitleText');
+            
+            isVoiceMentionMinimized = !isVoiceMentionMinimized;
+            if (isVoiceMentionMinimized) {
+                modal.classList.add('minimized');
+                btn.innerText = '🔳';
+                btn.title = '展開';
+                if (activeVoiceMentionPatient) {
+                    titleText.innerText = '語音提醒: ' + activeVoiceMentionPatient.name;
+                }
+            } else {
+                modal.classList.remove('minimized');
+                btn.innerText = '➖';
+                btn.title = '最小化';
+                titleText.innerText = '來電語音辨識提醒';
+            }
+        }
 
         function closeVoiceMention() {
             document.getElementById('voiceMentionModal').style.display = 'none';
+            // 重設最小化狀態
+            isVoiceMentionMinimized = false;
+            const modal = document.getElementById('voiceMentionModal');
+            modal.classList.remove('minimized');
+            document.getElementById('voiceMentionMinimizeBtn').innerText = '➖';
+            document.getElementById('voiceMentionMinimizeBtn').title = '最小化';
+            document.getElementById('voiceMentionTitleText').innerText = '來電語音辨識提醒';
+
             if (activeVoiceMentionPatient) {
                 const p = activeVoiceMentionPatient;
                 socket.emit('clear_voice_mention', {
@@ -1339,21 +1445,31 @@
 
     <!-- 語音來電詢問報到 Modal -->
     <div id="voiceMentionModal" class="modal" style="background: rgba(30, 41, 59, 0.95); color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.1); width: calc(100% - 40px); max-width: 420px; text-align: left; padding: 25px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); font-family: 'Outfit', sans-serif;">
-        <h3 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #eab308; margin-top: 0;">
-            📞 來電語音辨識提醒
-        </h3>
-        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
-            來電內容：「<span id="voiceMentionText" style="color: #f8fafc; font-style: italic; font-weight: 600;"></span>」
-        </p>
-        <div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="font-size: 1.05rem; font-weight: bold; color: #f8fafc; margin-bottom: 6px;" id="voiceMentionName">病患姓名</div>
-            <div style="font-size: 0.9rem; color: #94a3b8;">病歷號：<span id="voiceMentionRecordNo"></span></div>
-            <div style="font-size: 0.9rem; color: #94a3b8;">床號：<span id="voiceMentionBed"></span></div>
-            <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
+        <!-- Header -->
+        <div id="voiceMentionHeader" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; user-select: none;">
+            <h3 id="voiceMentionTitle" style="font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #eab308; margin: 0; cursor: pointer;" onclick="if(isVoiceMentionMinimized) toggleMinimizeVoiceMention()">
+                📞 <span id="voiceMentionTitleText">來電語音辨識提醒</span>
+            </h3>
+            <button id="voiceMentionMinimizeBtn" onclick="toggleMinimizeVoiceMention()" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; font-weight: bold; display: flex; align-items: center; justify-content: center; outline: none; transition: all 0.2s;">
+                ➖
+            </button>
         </div>
-        <div style="display: flex; gap: 10px; width: 100%;">
-            <button id="voiceMentionCheckInBtn" class="btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
-            <button onclick="closeVoiceMention()" class="btn" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
+        
+        <!-- Body -->
+        <div id="voiceMentionBody">
+            <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5;">
+                來電內容：「<span id="voiceMentionText" style="color: #f8fafc; font-style: italic; font-weight: 600;"></span>」
+            </p>
+            <div style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="font-size: 1.05rem; font-weight: bold; color: #f8fafc; margin-bottom: 6px;" id="voiceMentionName">病患姓名</div>
+                <div style="font-size: 0.9rem; color: #94a3b8;">病歷號：<span id="voiceMentionRecordNo"></span></div>
+                <div style="font-size: 0.9rem; color: #94a3b8;">床號：<span id="voiceMentionBed"></span></div>
+                <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
+            </div>
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button id="voiceMentionCheckInBtn" class="btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
+                <button onclick="closeVoiceMention()" class="btn" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
+            </div>
         </div>
     </div>
 </body>
