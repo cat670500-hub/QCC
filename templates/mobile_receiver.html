@@ -438,9 +438,37 @@
         請改用<strong>一般 Safari 瀏覽器</strong>開啟此網頁網址，即可正常使用語音控制。
     </div>
 
+    <!-- ⚙️ 設定與語音指南 (摺疊面版) -->
+    <div class="settings-collapse-panel" style="margin-bottom: 20px; border: 1px solid var(--border-glow); border-radius: 16px; background: var(--panel-bg); overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
+        <div onclick="toggleSettingsPanel()" style="padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(255, 255, 255, 0.02); user-select: none;">
+            <span style="font-weight: bold; font-size: 0.9rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                ⚙️ 系統設定與語音指南
+            </span>
+            <span id="settingsCollapseArrow" style="font-size: 0.8rem; color: var(--text-muted); transition: transform 0.3s; display: inline-block;">▼</span>
+        </div>
+        <div id="settingsCollapseContent" style="display: none; padding: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); flex-direction: column; gap: 15px;">
+            <!-- 系統連線網址 -->
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; text-align: left; color: #10b981; font-weight: bold;">
+                <span>🔗 系統連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a></span>
+                <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+                    <span id="speechStatus" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
+                    {% if session.operator_account %}
+                        <span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 {{ session.operator_account }}</span>
+                    {% endif %}
+                </div>
+            </div>
 
-
-
+            <!-- 語音指令指引 -->
+            <div class="tip-card" style="margin: 0; background: rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 12px; padding: 12px;">
+                <h4 style="font-size: 0.85rem; font-weight: bold; color: var(--primary); margin-bottom: 6px;">🎤 支援的語音指令</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.45;">
+                    • 說出「<strong>[姓名/病歷/床號] 報到</strong>」或「<strong>[姓名/病歷/床號] 取消報到</strong>」：辦理或取消特定病患報到。<br>
+                    • 說出「<strong>[姓名/病歷/床號] 發送</strong>」：發送特定病患的派遣通知。<br>
+                    • 說出「<strong>重新整理</strong>」：立刻更新清單。
+                </p>
+            </div>
+        </div>
+    </div>
 
     <!-- 搜尋與重整區塊 -->
     <div style="background: var(--panel-bg); backdrop-filter: blur(10px); border: 1px solid var(--border-glow); padding: 15px; border-radius: 16px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
@@ -474,38 +502,6 @@
     <div class="section-title">待處理派遣</div>
     <div id="incomingRequests" class="request-list">
         <div class="no-data">目前無待處理的派遣單</div>
-    </div>
-
-    <!-- ⚙️ 設定與語音指南 (摺疊面版) -->
-    <div class="settings-collapse-panel" style="margin-top: 20px; border: 1px solid var(--border-glow); border-radius: 16px; background: var(--panel-bg); overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
-        <div onclick="toggleSettingsPanel()" style="padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(255, 255, 255, 0.02); user-select: none;">
-            <span style="font-weight: bold; font-size: 0.9rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                ⚙️ 系統設定與語音指南
-            </span>
-            <span id="settingsCollapseArrow" style="font-size: 0.8rem; color: var(--text-muted); transition: transform 0.3s; display: inline-block;">▼</span>
-        </div>
-        <div id="settingsCollapseContent" style="display: none; padding: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); flex-direction: column; gap: 15px;">
-            <!-- 系統連線網址 -->
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; text-align: left; color: #10b981; font-weight: bold;">
-                <span>🔗 系統連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a></span>
-                <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
-                    <span id="speechStatus" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
-                    {% if session.operator_account %}
-                        <span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 {{ session.operator_account }}</span>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- 語音指令指引 -->
-            <div class="tip-card" style="margin: 0; background: rgba(0, 0, 0, 0.15); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 12px; padding: 12px;">
-                <h4 style="font-size: 0.85rem; font-weight: bold; color: var(--primary); margin-bottom: 6px;">🎤 支援的語音指令</h4>
-                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.45;">
-                    • 說出「<strong>[姓名/病歷/床號] 報到</strong>」或「<strong>[姓名/病歷/床號] 取消報到</strong>」：辦理或取消特定病患報到。<br>
-                    • 說出「<strong>[姓名/病歷/床號] 發送</strong>」：發送特定病患的派遣通知。<br>
-                    • 說出「<strong>重新整理</strong>」：立刻更新清單。
-                </p>
-            </div>
-        </div>
     </div>
 
     <script>
