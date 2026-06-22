@@ -344,6 +344,9 @@ def parse_patients(raw_items):
         
         # 聯集篩選 (任一符合即呈現)
         if is_chest_portable or is_icu or is_other_cr_for_portable_patient:
+            # 額外過濾：病房ICU檢查不加入Upper GI Series的檢查
+            if is_critical_care_bed(bed) and "upper gi series" in proc_name.lower():
+                continue
             if not pid:
                 continue
                 
