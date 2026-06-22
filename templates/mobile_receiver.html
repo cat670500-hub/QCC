@@ -693,7 +693,7 @@
                     actionContainer.innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
                 }
                 
-                speakNotification(`已接受${p.name}的派遣`);
+                speakNotification(`已接受床號${p.bed || '無床號'}的派遣`);
             }
         });
 
@@ -863,7 +863,7 @@
                     sendBtn.innerText = '⏳ 發送中...';
                     sendBtn.disabled = true;
                 }
-                speakNotification(`已發送${p.name}的派遣通知`);
+                speakNotification(`已發送床號${p.bed || '無床號'}的派遣通知`);
             }
         }
 
@@ -1006,7 +1006,7 @@
                 card.className = cardClass;
                 card.querySelector('.action-container').innerHTML = '<div style="color: var(--success); font-weight: 700; width:100%; text-align:center;">已接受派遣</div>';
                 
-                speakNotification(`已接受${p.name}的派遣`);
+                speakNotification(`已接受床號${p.bed || '無床號'}的派遣`);
             }
         }
 
@@ -1371,7 +1371,7 @@
 
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，已為您標示。`);
+                const utterance = new SpeechSynthesisUtterance(`來電提到床號 ${p.bed || '無床號'}，已為您標示。`);
                 utterance.lang = 'zh-TW';
                 window.speechSynthesis.speak(utterance);
             }

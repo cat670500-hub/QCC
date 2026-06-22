@@ -392,10 +392,9 @@
                 }
             }
 
-            // 語音朗誦姓名、床號，重複三次，每次播報前皆加入警示聲，中間有間隔 (若使用 Google 語音會直接唸 "portable"，若使用本機離線語音則會自動改唸中文諧音 "坡特波" 以維持同一個人聲)
-            const name = p.name || '無姓名';
+            // 語音朗誦床號，重複三次，每次播報前皆加入警示聲，中間有間隔 (若使用 Google 語音會直接唸 "portable"，若使用本機離線語音則會自動改唸中文諧音 "坡特波" 以維持同一個人聲)
             const bed = p.bed || '無床號';
-            const textToSpeak = `請注意床號 ${bed} 病患 ${name} portable 要來了`;
+            const textToSpeak = `請注意床號 ${bed} portable 要來了`;
             
             activeAnnouncementId++;
             const currentId = activeAnnouncementId;
