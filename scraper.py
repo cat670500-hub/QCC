@@ -331,8 +331,8 @@ def parse_patients(raw_items):
         # 條件 1：醫令名稱符合 'Chest(AP)Portable'
         is_chest_portable = (proc_name == 'Chest(AP)Portable')
         
-        # 條件 2：病床號符合重症病房
-        is_icu = is_critical_care_bed(bed)
+        # 條件 2：病床號符合重症病房 (只抓取 CR 的檢查，即 CR 或 DX 儀器類別)
+        is_icu = is_critical_care_bed(bed) and (modality in ['CR', 'DX'])
         
         # 條件 3：同一個住院病患有 Portable，且此項目為 CR 檢查
         raw_pid = item.get('PatientId')
