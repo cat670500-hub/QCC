@@ -55,7 +55,7 @@
             <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
         </div>
         <div style="display: flex; gap: 10px;">
-            <button id="voiceMentionCheckInBtn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
+            <button id="voiceMentionCheckInBtn" onclick="closeVoiceMentionWithoutClearing()" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 收到</button>
             <button onclick="closeVoiceMention()" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
         </div>
     </div>
@@ -350,6 +350,11 @@
                 });
                 activeVoiceMentionPatient = null;
             }
+        }
+
+        function closeVoiceMentionWithoutClearing() {
+            document.getElementById('voiceMentionModal').style.display = 'none';
+            activeVoiceMentionPatient = null;
         }
 
         // 載入 localStorage 中的病房設定

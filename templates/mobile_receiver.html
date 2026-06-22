@@ -794,7 +794,11 @@
 
                 let voiceMentionBadge = '';
                 if (p.voice_mentioned) {
-                    voiceMentionBadge = '<span style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📞 語音來電中</span>';
+                    voiceMentionBadge = `
+                        <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap;" title="點擊清除語音標記" onclick="event.stopPropagation(); socket.emit('clear_voice_mention', { record_no: '${p.record_no}', exam: '${p.exam}', accession_no: '${p.accession_no || ''}', order_no: '${p.order_no || ''}' })">
+                            📞 語音來電中 ✕
+                        </span>
+                    `;
                 }
 
                 card.innerHTML = `
@@ -1352,21 +1356,7 @@
 
             const checkInBtn = document.getElementById('voiceMentionCheckInBtn');
             checkInBtn.onclick = () => {
-                socket.emit('check_in_patient', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-                
-                socket.emit('clear_voice_mention', {
-                    record_no: p.record_no,
-                    exam: p.exam,
-                    accession_no: p.accession_no || '',
-                    order_no: p.order_no || ''
-                });
-
-                closeVoiceMention();
+                closeVoiceMentionWithoutClearing();
             };
 
             const modal = document.getElementById('voiceMentionModal');
@@ -1381,7 +1371,7 @@
 
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，請確認是否辦理報到。`);
+                const utterance = new SpeechSynthesisUtterance(`來電提到病患 ${p.name}，已為您標示。`);
                 utterance.lang = 'zh-TW';
                 window.speechSynthesis.speak(utterance);
             }
@@ -1430,6 +1420,18 @@
             }
         }
 
+        function closeVoiceMentionWithoutClearing() {
+            document.getElementById('voiceMentionModal').style.display = 'none';
+            // 重設最小化狀態
+            isVoiceMentionMinimized = false;
+            const modal = document.getElementById('voiceMentionModal');
+            modal.classList.remove('minimized');
+            document.getElementById('voiceMentionMinimizeBtn').innerText = '➖';
+            document.getElementById('voiceMentionMinimizeBtn').title = '最小化';
+            document.getElementById('voiceMentionTitleText').innerText = '來電語音辨識提醒';
+            activeVoiceMentionPatient = null;
+        }
+
         function toggleSettingsPanel() {
             const content = document.getElementById('settingsCollapseContent');
             const arrow = document.getElementById('settingsCollapseArrow');
@@ -1467,7 +1469,7 @@
                 <div style="font-size: 0.9rem; color: #94a3b8;">檢查項目：<span id="voiceMentionExam"></span></div>
             </div>
             <div style="display: flex; gap: 10px; width: 100%;">
-                <button id="voiceMentionCheckInBtn" class="btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 辦理報到</button>
+                <button id="voiceMentionCheckInBtn" class="btn" style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">📋 收到</button>
                 <button onclick="closeVoiceMention()" class="btn" style="flex: 1; background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer;">忽略</button>
             </div>
         </div>
