@@ -446,21 +446,89 @@ def index():
     <html lang="zh-TW">
     <head>
         <meta charset="UTF-8">
-        <title>Portable 收發訊息</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Portable 語音派遣系統</title>
         <link rel="stylesheet" href="/static/css/style.css">
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body {
+                font-family: 'Outfit', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin: 0;
+            }
+            .index-container {
+                background: rgba(30, 41, 59, 0.7);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 24px;
+                padding: 2.5rem 2rem;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+                text-align: center;
+                width: 90%;
+                max-width: 450px;
+                color: #f8fafc;
+            }
+            .index-title {
+                font-size: 1.8rem;
+                font-weight: 700;
+                margin-bottom: 2rem;
+                background: linear-gradient(to right, #38bdf8, #34d399);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            .index-btn {
+                background: linear-gradient(135deg, #0ea5e9, #0284c7);
+                color: white;
+                border: none;
+                padding: 14px 24px;
+                border-radius: 14px;
+                font-size: 1.05rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+            }
+            .index-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(14, 165, 233, 0.4);
+                background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            }
+            .index-btn:active {
+                transform: translateY(0);
+            }
+            .btn-link {
+                text-decoration: none;
+                width: 100%;
+            }
+            .btn-group {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+        </style>
     </head>
     <body>
-        <div class="container">
-            <h1>Portable 收發訊息</h1>
-            <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
-                <a href="/sender" style="text-decoration: none;">
-                    <button style="width: 100%;">前往發送端 (Sender)</button>
+        <div class="index-container">
+            <h1 class="index-title">🏥 Portable 語音派遣系統</h1>
+            <div class="btn-group">
+                <a href="/sender" class="btn-link">
+                    <button class="index-btn">💻 前往發送端 (Sender)</button>
                 </a>
-                <a href="/mobile" style="text-decoration: none;">
-                    <button style="width: 100%;">前往手機發送端 (Mobile)</button>
+                <a href="/mobile" class="btn-link">
+                    <button class="index-btn" style="background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">📱 前往手機接收端 (Mobile)</button>
                 </a>
-                <a href="/receiver" style="text-decoration: none;">
-                    <button style="width: 100%;">前往接收端 (Receiver)</button>
+                <a href="/receiver" class="btn-link">
+                    <button class="index-btn" style="background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">🖥️ 前往接收端 (Receiver)</button>
                 </a>
             </div>
         </div>
