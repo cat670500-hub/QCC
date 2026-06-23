@@ -1191,7 +1191,8 @@
         }
 
         // 檢查安全來源限制並給予提示
-        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        const hasSpeech = ('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window);
+        if (!hasSpeech && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
             const voiceStatus = document.getElementById('voiceStatus');
             if (voiceStatus) {
                 voiceStatus.innerHTML = '<span style="color: #ef4444; font-weight: bold;">⚠️ 瀏覽器基於 HTTP 安全限制已停用麥克風。</span> <span style="font-size: 0.85rem; color: #64748b;">Android 用戶請至 Chrome 設定 chrome://flags 允許此 IP</span>';
