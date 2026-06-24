@@ -90,7 +90,20 @@ class CallMonitorService : Service() {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, getServiceNotification("等待電話接通..."))
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID, 
+                    getServiceNotification("等待電話接通..."),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, getServiceNotification("等待電話接通..."))
+            }
+        } catch (e: Exception) {
+            Log.e("CallMonitorService", "啟動前景服務失敗: ${e.message}")
+        }
         
         // 讀取先前儲存的 Flask IP 設定
         val prefs = getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
@@ -99,23 +112,30 @@ class CallMonitorService : Service() {
         // 初始化 Socket.IO 連線
         initSocket()
 
-        // 使用 PhoneStateListener 直接註冊電話狀態，這是最穩定可靠的做法 (比起 BroadcastReceiver 更不容易漏訊號)
-        val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
-        phoneStateListener = object : android.telephony.PhoneStateListener() {
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                super.onCallStateChanged(state, phoneNumber)
-                val stateStr = when(state) {
-                    android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
-                    android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
-                    android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
-                    else -> "UNKNOWN"
-                }
-                if (stateStr != "UNKNOWN") {
-                    handleCallState(stateStr, phoneNumber)
+        // 使用 PhoneStateListener 直接註冊電話狀態，這是最穩定可靠的做法
+        try {
+            val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+            phoneStateListener = object : android.telephony.PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    super.onCallStateChanged(state, phoneNumber)
+                    val stateStr = when(state) {
+                        android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+                        android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+                        android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+                        else -> "UNKNOWN"
+                    }
+                    if (stateStr != "UNKNOWN") {
+                        handleCallState(stateStr, phoneNumber)
+                    }
                 }
             }
+            telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
+        } catch (e: SecurityException) {
+            Log.e("CallMonitorService", "缺少電話狀態權限: ${e.message}")
+            addLog("[系統錯誤] 缺少電話權限，無法監聽來電狀態！請至設定開啟權限。\n")
+        } catch (e: Exception) {
+            Log.e("CallMonitorService", "PhoneStateListener 註冊失敗: ${e.message}")
         }
-        telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     private var phoneStateListener: android.telephony.PhoneStateListener? = null
@@ -541,7 +561,15 @@ class CallMonitorService : Service() {
 
     private fun updateNotification(text: String) {
         try {
-            startForeground(NOTIFICATION_ID, getServiceNotification(text))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID, 
+                    getServiceNotification(text),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, getServiceNotification(text))
+            }
         } catch (e: Exception) {
             Log.e("CallMonitorService", "更新前景服務通知失敗: ${e.message}")
         }
