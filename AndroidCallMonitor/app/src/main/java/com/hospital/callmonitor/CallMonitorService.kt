@@ -112,33 +112,52 @@ class CallMonitorService : Service() {
         // 初始化 Socket.IO 連線
         initSocket()
 
-        // 使用 PhoneStateListener 直接註冊電話狀態，這是最穩定可靠的做法
+        // 註冊電話狀態監聽
         try {
             val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
-            phoneStateListener = object : android.telephony.PhoneStateListener() {
-                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                    super.onCallStateChanged(state, phoneNumber)
-                    val stateStr = when(state) {
-                        android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
-                        android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
-                        android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
-                        else -> "UNKNOWN"
-                    }
-                    if (stateStr != "UNKNOWN") {
-                        handleCallState(stateStr, phoneNumber)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val callback = object : android.telephony.TelephonyCallback(), android.telephony.TelephonyCallback.CallStateListener {
+                    override fun onCallStateChanged(state: Int) {
+                        val stateStr = when(state) {
+                            android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+                            android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+                            android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+                            else -> "UNKNOWN"
+                        }
+                        if (stateStr != "UNKNOWN") {
+                            handleCallState(stateStr, null)
+                        }
                     }
                 }
+                telephonyCallback = callback
+                telephonyManager.registerTelephonyCallback(mainExecutor, callback)
+            } else {
+                phoneStateListener = object : android.telephony.PhoneStateListener() {
+                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                        super.onCallStateChanged(state, phoneNumber)
+                        val stateStr = when(state) {
+                            android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+                            android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+                            android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+                            else -> "UNKNOWN"
+                        }
+                        if (stateStr != "UNKNOWN") {
+                            handleCallState(stateStr, phoneNumber)
+                        }
+                    }
+                }
+                telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
             }
-            telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
         } catch (e: SecurityException) {
             Log.e("CallMonitorService", "缺少電話狀態權限: ${e.message}")
             addLog("[系統錯誤] 缺少電話權限，無法監聽來電狀態！請至設定開啟權限。\n")
         } catch (e: Exception) {
-            Log.e("CallMonitorService", "PhoneStateListener 註冊失敗: ${e.message}")
+            Log.e("CallMonitorService", "電話監聽註冊失敗: ${e.message}")
         }
     }
 
     private var phoneStateListener: android.telephony.PhoneStateListener? = null
+    private var telephonyCallback: Any? = null
 
 
 
@@ -601,8 +620,10 @@ class CallMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            if (phoneStateListener != null) {
-                val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+            val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && telephonyCallback != null) {
+                telephonyManager.unregisterTelephonyCallback(telephonyCallback as android.telephony.TelephonyCallback)
+            } else if (phoneStateListener != null) {
                 telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_NONE)
             }
         } catch (e: Exception) {}
