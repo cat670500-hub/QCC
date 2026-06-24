@@ -801,10 +801,11 @@ def voice_dispatch():
         socketio.emit('voice_logs_updated', get_voice_logs_list())
         
         print(f"[語音提示] 來電語音提到病患 (共 {len(matched_patients)} 位)，更新卡片高亮狀態。")
-        socketio.emit('voice_mention_alert', {
-            'patient': matched_patients[0],
-            'text': text
-        })
+        # 根據您的需求，取消畫面中央的彈出提醒，直接以卡片高亮標示即可
+        # socketio.emit('voice_mention_alert', {
+        #     'patient': matched_patients[0],
+        #     'text': text
+        # })
             
         return jsonify({
             "status": "success", 
