@@ -726,6 +726,16 @@ def is_fuzzy_bed_match(text, bed_no):
     # 處理急診的常見語音誤判
     text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
     
+    # 移除常見的口語贅字
+    fluff_pattern = r'[樓床房號室區的那個這]'
+    text_clean = re.sub(fluff_pattern, '', text_clean)
+    bed_clean = re.sub(fluff_pattern, '', bed_clean)
+    
+    # 針對英文字母後面的「0」進行防呆正規化 (例如 11B01 和 11B1 應該要能互通)
+    # 把字母後面的 0 拔掉，讓 11b01 變成 11b1
+    text_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', text_clean)
+    bed_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', bed_clean)
+    
     if bed_clean in text_clean:
         return True
         
