@@ -82,7 +82,7 @@
                         </span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
                             {% if p.voice_mentioned %}
-                                <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="點擊清除語音標記" onclick="socket.emit('clear_voice_mention', { record_no: '{{ p.record_no }}', exam: '{{ p.exam }}', accession_no: '{{ p.accession_no or "" }}', order_no: '{{ p.order_no or "" }}' })">📞 語音來電中 ✕</span>
+                                <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="點擊清除語音標記" onclick="socket.emit('clear_voice_mention', { record_no: '{{ p.record_no }}', exam: '{{ p.exam }}', accession_no: '{{ p.accession_no or "" }}', order_no: '{{ p.order_no or "" }}' })">{{ p.voice_alert or '📞 語音來電中' }} ✕</span>
                             {% endif %}
                             {% if p.dispatched %}
                                 <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
@@ -539,7 +539,7 @@
                 voiceBadge.style.gap = '4px';
                 voiceBadge.style.cursor = 'pointer';
                 voiceBadge.title = '點擊清除語音標記';
-                voiceBadge.innerText = '📞 語音來電中 ✕';
+                voiceBadge.innerText = (p.voice_alert || '📞 語音來電中') + ' ✕';
                 voiceBadge.onclick = (e) => {
                     e.stopPropagation();
                     socket.emit('clear_voice_mention', {

@@ -14,12 +14,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.app.role.RoleManager
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var txtStatus: TextView
     private lateinit var editIpAddress: EditText
     private lateinit var btnToggle: Button
+    private lateinit var txtLogHistory: TextView
     
     private var isServiceRunning = false
     private val PERMISSION_REQUEST_CODE = 999
@@ -31,6 +33,7 @@ class MainActivity : AppCompatActivity() {
         txtStatus = findViewById(R.id.txtStatus)
         editIpAddress = findViewById(R.id.editIpAddress)
         btnToggle = findViewById(R.id.btnToggle)
+        txtLogHistory = findViewById(R.id.txtLogHistory)
 
         // 讀取先前儲存的 Flask IP
         val prefs = getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
@@ -47,6 +50,28 @@ class MainActivity : AppCompatActivity() {
                 startMonitorService()
             }
         }
+        
+        // 註冊廣播接收器來更新日誌
+        val filter = android.content.IntentFilter("com.hospital.callmonitor.UPDATE_LOG")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(logReceiver, filter)
+        }
+    }
+    
+    private val logReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val logMsg = intent?.getStringExtra("log") ?: return
+            val currentText = txtLogHistory.text.toString()
+            // 最新的放在最上面
+            txtLogHistory.text = logMsg + currentText
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(logReceiver)
     }
 
     private fun startMonitorService() {
@@ -55,6 +80,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "請輸入有效的 IP 位置", Toast.LENGTH_SHORT).show()
             return
         }
+
+        // 檢查並提示用戶設定為預設撥號/通話程式 (Android 9.0+ 執行自動接聽所必需)
+        checkDefaultDialer()
 
         // 儲存 IP 設定
         val prefs = getSharedPreferences("CallMonitorPrefs", Context.MODE_PRIVATE)
@@ -112,6 +140,11 @@ class MainActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.ANSWER_PHONE_CALLS)
         }
 
+        // Android 13 (Tiramisu) 或以上需要動態要求 POST_NOTIFICATIONS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         val neededPermissions = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
@@ -141,6 +174,32 @@ class MainActivity : AppCompatActivity() {
             }
             if (!allGranted) {
                 Toast.makeText(this, "請授予所需權限以啟用完整自動監聽功能！", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun checkDefaultDialer() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager != null && !roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+                    val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+                    startActivityForResult(intent, PERMISSION_REQUEST_CODES)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "設定預設撥號程式失敗(RoleManager): ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val telecomManager = getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+                if (telecomManager.defaultDialerPackage != packageName) {
+                    val intent = Intent(android.telecom.TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
+                        putExtra(android.telecom.TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName)
+                    }
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "設定預設撥號程式失敗(TelecomManager): ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }

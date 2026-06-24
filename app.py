@@ -397,16 +397,16 @@ def log_dispatch(patient_info, time_str):
     except Exception as e:
         print(f"[警告] 寫入發送日誌失敗: {e}")
 
-def log_voice_call(text, matched_patient=None):
+def log_voice_call(text, matched_patient=None, phone_number="未知"):
     try:
         time_str = time.strftime("%Y-%m-%d %H:%M:%S")
         if matched_patient:
             name = matched_patient.get('name', '未知')
             rec_no = matched_patient.get('record_no', '未知')
             bed = matched_patient.get('bed', '無')
-            log_line = f"[{time_str}] 語音:「{text}」 | 已配對: {name} ({rec_no}) - 床號: {bed}\n"
+            log_line = f"[{time_str}] 來電: {phone_number} | 語音:「{text}」 | 已配對: {name} ({rec_no}) - 床號: {bed}\n"
         else:
-            log_line = f"[{time_str}] 語音:「{text}」 | 未配對病患\n"
+            log_line = f"[{time_str}] 來電: {phone_number} | 語音:「{text}」 | 未配對病患\n"
         with open("voice_calls.log", "a", encoding="utf-8") as f:
             f.write(log_line)
     except Exception as e:
@@ -608,6 +608,7 @@ def clear_voice_mention():
         p_req = p_acc if p_acc else p_ord
         if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
             p['voice_mentioned'] = False
+            p['voice_alert'] = None
             break
             
     patients_data = sort_patients(patients_data)
@@ -643,6 +644,22 @@ def api_patients():
 def api_history():
     return jsonify(confirmed_history)
 
+@app.route('/api/upload_recording', methods=['POST'])
+def upload_recording():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "無上傳檔案"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "檔名為空"}), 400
+    
+    from werkzeug.utils import secure_filename
+    os.makedirs('recordings', exist_ok=True)
+    filename = secure_filename(file.filename)
+    filepath = os.path.join('recordings', filename)
+    file.save(filepath)
+    print(f"[錄音上傳] 已成功接收並儲存通話錄音檔: {filepath}")
+    return jsonify({"status": "success", "filepath": filepath})
+
 @app.route('/api/pending_check_ins', methods=['GET'])
 def get_pending_check_ins():
     global pending_hospital_check_ins
@@ -677,10 +694,11 @@ def voice_dispatch():
     global patients_data
     data = request.get_json()
     text = data.get('text', '')
+    phone_number = data.get('phone_number', '未知')
     if not text:
         return jsonify({"status": "error", "message": "No text provided"}), 400
         
-    print(f"[{time.strftime('%H:%M:%S')}] 收到來電通話語音對話: {text}")
+    print(f"[{time.strftime('%H:%M:%S')}] 收到來電: {phone_number}, 語音對話: {text}")
     
     # 進行對話分析，並 cross-reference 目前爬蟲抓到的病患清單
     matched_patient = None
@@ -713,9 +731,13 @@ def voice_dispatch():
                 matched_patient = p
                 break
                 
-    # 4. 如果找到了配對的病患，標記語音提到並更新清單，使其以黃色高亮顯示
+    # 4. 如果找到了配對的病患，根據語音內容判斷是否觸發動作
     if matched_patient:
-        log_voice_call(text, matched_patient)
+        log_voice_call(text, matched_patient, phone_number)
+        
+        # 無論是否有提到照相，只要是來電語音有比對到病患，就預設顯示需照相的紅色警告
+        alert_text = "🚨 需照相"
+            
         matched_record_no = str(matched_patient.get('record_no', '')).strip()
         matched_exam = str(matched_patient.get('exam', '')).strip()
         matched_acc = str(matched_patient.get('accession_no', '')).strip()
@@ -723,7 +745,6 @@ def voice_dispatch():
         matched_req = matched_acc if matched_acc else matched_ord
         patient_key = f"{matched_record_no}|{matched_exam}|{matched_req}"
         
-        # 標記為語音提到，最優先置頂
         for p in patients_data:
             p_rec = str(p.get('record_no', '')).strip()
             p_ex = str(p.get('exam', '')).strip()
@@ -732,19 +753,19 @@ def voice_dispatch():
             p_req = p_acc if p_acc else p_ord
             if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
                 p['voice_mentioned'] = True
+                p['voice_alert'] = alert_text
                 break
                 
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
         socketio.emit('voice_logs_updated', get_voice_logs_list())
         
-        # 廣播更新事件 (供行動端等其它頁面接收狀態)
         print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，更新卡片高亮狀態。")
         socketio.emit('voice_mention_alert', {
             'patient': matched_patient,
             'text': text
         })
-        
+            
         return jsonify({
             "status": "success", 
             "matched": True, 
@@ -752,7 +773,7 @@ def voice_dispatch():
             "action": "voice_mentioned"
         })
         
-    log_voice_call(text, None)
+    log_voice_call(text, None, phone_number)
     socketio.emit('voice_logs_updated', get_voice_logs_list())
     return jsonify({
         "status": "success", 
@@ -784,6 +805,7 @@ def update_patients():
             p['confirmed'] = p.get('confirmed', False) or (patient_key in confirmed_patients)
             # 優先保留語音提到狀態
             existing_voice_mentioned = False
+            existing_voice_alert = None
             for old_p in patients_data:
                 old_rec = old_p.get('record_no')
                 old_ex = old_p.get('exam')
@@ -792,8 +814,10 @@ def update_patients():
                 old_req = old_acc if old_acc else old_ord
                 if f"{old_rec}|{old_ex}|{old_req}" == patient_key:
                     existing_voice_mentioned = old_p.get('voice_mentioned', False)
+                    existing_voice_alert = old_p.get('voice_alert')
                     break
             p['voice_mentioned'] = p.get('voice_mentioned', False) or existing_voice_mentioned
+            p['voice_alert'] = p.get('voice_alert') or existing_voice_alert
             # 只有醫院端真正分派才設為 dispatched。本地發送使用 local_dispatched 追蹤。
             p['dispatched'] = p.get('dispatched', False)
             p['local_dispatched'] = (patient_key in sent_patients)
@@ -909,6 +933,7 @@ def log_server_sync_error(acc_no, action, message):
 
 @socketio.on('agent_check_in_result')
 def handle_agent_check_in_result(data):
+    global patients_data
     acc_no = data.get("accession_no")
     is_check = data.get("is_check_in", True)
     success = data.get("success", False)
@@ -919,7 +944,6 @@ def handle_agent_check_in_result(data):
     
     if not success and acc_no:
         log_server_sync_error(acc_no, action, msg)
-        global patients_data
         target_p = None
         for p in patients_data:
             p_acc = str(p.get('accession_no') or '').strip()
@@ -1206,6 +1230,41 @@ if __name__ == '__main__':
             proto = 'https' if (os.path.exists('cert.pem') and os.path.exists('key.pem')) else 'http'
             webbrowser.open(f"{proto}://127.0.0.1:5000/")
         threading.Thread(target=open_browser, daemon=True).start()
+
+        # 啟動每日 00:00 自動銷毀錄音檔案的背景排程
+        import datetime
+        import shutil
+        def background_recordings_cleaner():
+            while True:
+                now = datetime.datetime.now()
+                tomorrow = now.date() + datetime.timedelta(days=1)
+                midnight = datetime.datetime.combine(tomorrow, datetime.time.min)
+                sleep_seconds = (midnight - now).total_seconds()
+                
+                # 若已經到了午夜，先執行清理
+                if sleep_seconds <= 1 or now >= midnight:
+                    try:
+                        recordings_dir = "recordings"
+                        if os.path.exists(recordings_dir):
+                            for filename in os.listdir(recordings_dir):
+                                file_path = os.path.join(recordings_dir, filename)
+                                if os.path.isfile(file_path) or os.path.islink(file_path):
+                                    os.unlink(file_path)
+                                elif os.path.isdir(file_path):
+                                    shutil.rmtree(file_path)
+                            print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [清理排程] 成功清理每日午夜過期錄音檔案！")
+                    except Exception as e:
+                        print(f"[清理排程警告] 執行每日清理時發生錯誤: {e}")
+                    
+                    # 重新計算下一個午夜
+                    now = datetime.datetime.now()
+                    tomorrow = now.date() + datetime.timedelta(days=1)
+                    midnight = datetime.datetime.combine(tomorrow, datetime.time.min)
+                    sleep_seconds = (midnight - now).total_seconds()
+
+                time.sleep(min(sleep_seconds, 60))
+                
+        threading.Thread(target=background_recordings_cleaner, daemon=True).start()
 
     # 在正式打包環境中，關閉 debug 模式會更穩定
     is_debug = False

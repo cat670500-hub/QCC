@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_size"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="24dp"
@@ -99,6 +99,33 @@
         android:backgroundTint="#0ea5e9"
         android:layout_marginBottom="24dp" />
 
+    <!-- 辨識歷程記錄 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="語音辨識歷程記錄"
+        android:textColor="#94a3b8"
+        android:textSize="14sp"
+        android:layout_gravity="start"
+        android:layout_marginBottom="8dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#1e293b"
+        android:padding="12dp"
+        android:layout_marginBottom="16dp">
+        <TextView
+            android:id="@+id/txtLogHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#cbd5e1"
+            android:textSize="14sp"
+            android:text="[系統] 等待來電與語音辨識...\n"
+            android:lineSpacingExtra="4dp" />
+    </ScrollView>
+
     <!-- 權限要求說明與導引 -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -106,7 +133,7 @@
         android:orientation="vertical"
         android:background="#1e293b"
         android:padding="16dp"
-        android:layout_marginTop="auto"
+        android:layout_marginTop="16dp"
         android:layout_marginBottom="16dp">
 
         <TextView

@@ -19,12 +19,12 @@
     <!-- 背景常駐前景服務權限 (確保在背景或關閉螢幕時也能穩定監聽) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:mipmap/sym_def_app_icon"
         android:label="Portable 語音來電監控"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         android:usesCleartextTraffic="true"> <!-- 允許 HTTP 連線傳輸文字到 Flask -->
@@ -45,16 +45,6 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
-
-        <!-- 來電狀態廣播接收器 -->
-        <receiver
-            android:name=".CallBroadcastReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE" />
-            </intent-filter>
-        </receiver>
 
     </application>
 </manifest>

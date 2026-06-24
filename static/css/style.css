@@ -99,14 +99,18 @@ button:disabled {
 /* --- 新增病患狀態卡片樣式 --- */
 .request-box.status-voice-mentioned {
     border-left: 6px solid #eab308 !important;
-    background: rgba(254, 243, 199, 0.95) !important;
-    box-shadow: 0 4px 16px rgba(234, 179, 8, 0.2) !important;
-    animation: pulse-yellow 2s infinite alternate;
+    animation: pulse-yellow 1.5s infinite alternate;
 }
 
 @keyframes pulse-yellow {
-    0% { box-shadow: 0 0 4px rgba(234, 179, 8, 0.2); }
-    100% { box-shadow: 0 0 16px rgba(234, 179, 8, 0.6); }
+    0% { 
+        box-shadow: 0 0 4px rgba(234, 179, 8, 0.2); 
+        background: rgba(254, 243, 199, 0.95); 
+    }
+    100% { 
+        box-shadow: 0 0 16px rgba(234, 179, 8, 0.6); 
+        background: rgba(253, 230, 138, 0.95); 
+    }
 }
 
 .request-box.status-unchecked-in {
