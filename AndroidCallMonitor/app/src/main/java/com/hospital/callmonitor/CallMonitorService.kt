@@ -281,11 +281,8 @@ class CallMonitorService : Service() {
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioManager.isSpeakerphoneOn = true
                 
-                // 接通後啟動語音辨識與錄音
+                // 接通後啟動語音辨識
                 startSpeechRecognition()
-                Handler(Looper.getMainLooper()).postDelayed({
-                    startAudioRecording()
-                }, 1500)
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
@@ -298,8 +295,6 @@ class CallMonitorService : Service() {
                 
                 // 1. 停止語音辨識
                 stopSpeechRecognition()
-                // 2. 結束錄音並上傳
-                stopAudioRecording()
             }
         }
     }
@@ -318,8 +313,9 @@ class CallMonitorService : Service() {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW") // 強制使用繁體中文
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-TW")
-                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "zh-TW")
+                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) // 只取得完整句子
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5) // 要求提供多個候選辨識結果
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
@@ -364,16 +360,17 @@ class CallMonitorService : Service() {
                         isRecognizerActive = false
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
-                            val recognizedText = matches[0]
+                            // 將所有可能的候選結果合併傳送給後端，大幅提高容錯率與精準度
+                            val recognizedText = matches.joinToString(" | ")
                             Log.d("SpeechRecognizer", "🎙️ 通話辨識文本: $recognizedText")
                             
                             val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                            val logMsg = "[$timeStr] 來電: $currentPhoneNumber\n辨識內容: $recognizedText\n---\n"
+                            val logMsg = "[$timeStr] 來電: $currentPhoneNumber\n辨識內容 (多候選): ${matches[0]}\n---\n"
                             
                             addLog(logMsg)
                             
                             Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(applicationContext, "辨識到: $recognizedText", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(applicationContext, "聽到了: ${matches[0]}", Toast.LENGTH_SHORT).show()
                             }
                             sendTextToFlask(recognizedText, currentPhoneNumber)
                         }
