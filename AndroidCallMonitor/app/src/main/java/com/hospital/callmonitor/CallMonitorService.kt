@@ -415,10 +415,29 @@ class CallMonitorService : Service() {
                 }
 
                 val responseCode = conn.responseCode
-                Log.d("CallMonitorService", "傳送 Flask 成功，伺服器回應碼: $responseCode")
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val responseStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    try {
+                        val jsonResp = JSONObject(responseStr)
+                        if (jsonResp.optBoolean("matched", false)) {
+                            val patientJson = jsonResp.optJSONObject("patient")
+                            val matchedBed = patientJson?.optString("bed", "未知") ?: "未知"
+                            val matchedName = patientJson?.optString("name", "未知") ?: "未知"
+                            addLog("[系統] ✅ 伺服器成功配對照相床號: $matchedBed ($matchedName)\n---\n")
+                        } else {
+                            addLog("[系統] ⚠️ 伺服器收到語音，但未找到相符床號\n---\n")
+                        }
+                    } catch (e: Exception) {
+                        addLog("[系統] 成功傳送至伺服器\n---\n")
+                    }
+                } else {
+                    Log.e("CallMonitorService", "傳送 Flask 失敗，伺服器回應碼: $responseCode")
+                    addLog("[錯誤] 伺服器拒絕接收 (代碼: $responseCode)\n---\n")
+                }
                 conn.disconnect()
             } catch (e: Exception) {
                 Log.e("CallMonitorService", "無法連線至 Flask 伺服器: ${e.message}")
+                addLog("[網路錯誤] 無法連線至伺服器，請檢查 IP (${getBaseUrl()}) 與網路連線: ${e.message}\n")
             }
         }
     }
