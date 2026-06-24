@@ -32,13 +32,23 @@ import java.security.SecureRandom
 
 class CallMonitorService : Service() {
 
+    companion object {
+        private const val NOTIFICATION_ID = 888
+        private const val CHANNEL_ID = "CallMonitorChannel"
+        
+        // 用來將日誌傳遞給 MainActivity 的靜態回呼函數
+        var logListener: ((String) -> Unit)? = null
+        
+        fun addLog(msg: String) {
+            logListener?.invoke(msg)
+        }
+    }
+
     private lateinit var audioManager: AudioManager
     private var speechRecognizer: SpeechRecognizer? = null
     private var isRecognizerActive = false
     private var flaskIpAddress = "192.168.1.100" // 預設 IP，可在 App 畫面修改
     private var mSocket: Socket? = null
-    private val NOTIFICATION_ID = 888
-    private val CHANNEL_ID = "CallMonitorChannel"
     
     // 錄音相關成員變數
     private var mediaRecorder: android.media.MediaRecorder? = null
@@ -89,28 +99,34 @@ class CallMonitorService : Service() {
         // 初始化 Socket.IO 連線
         initSocket()
 
-        // 動態註冊來電狀態監聽器，避免 Android 12+ 背景啟動服務的崩潰問題
-        val filter = android.content.IntentFilter(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED)
-        registerReceiver(callStateReceiver, filter)
-    }
-
-    private val callStateReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val state = intent?.getStringExtra(android.telephony.TelephonyManager.EXTRA_STATE)
-            val incomingNumber = intent?.getStringExtra(android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER)
-            
-            when (state) {
-                android.telephony.TelephonyManager.EXTRA_STATE_RINGING -> handleCallState("RINGING", incomingNumber)
-                android.telephony.TelephonyManager.EXTRA_STATE_OFFHOOK -> handleCallState("OFFHOOK", null)
-                android.telephony.TelephonyManager.EXTRA_STATE_IDLE -> handleCallState("IDLE", null)
+        // 使用 PhoneStateListener 直接註冊電話狀態，這是最穩定可靠的做法 (比起 BroadcastReceiver 更不容易漏訊號)
+        val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+        phoneStateListener = object : android.telephony.PhoneStateListener() {
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                super.onCallStateChanged(state, phoneNumber)
+                val stateStr = when(state) {
+                    android.telephony.TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+                    android.telephony.TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+                    android.telephony.TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+                    else -> "UNKNOWN"
+                }
+                if (stateStr != "UNKNOWN") {
+                    handleCallState(stateStr, phoneNumber)
+                }
             }
         }
+        telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_CALL_STATE)
     }
+
+    private var phoneStateListener: android.telephony.PhoneStateListener? = null
 
     override fun onDestroy() {
         super.onDestroy()
         try {
-            unregisterReceiver(callStateReceiver)
+            if (phoneStateListener != null) {
+                val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_NONE)
+            }
         } catch (e: Exception) {}
         stopSpeechRecognition()
         stopAudioRecording()
@@ -205,11 +221,9 @@ class CallMonitorService : Service() {
         when (callState) {
             "RINGING" -> {
                 updateNotification("來電響鈴中: $currentPhoneNumber")
-                val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                logIntent.putExtra("log", "[$timeStr] 偵測到來電響鈴: $currentPhoneNumber\n")
-                logIntent.setPackage(packageName)
-                sendBroadcast(logIntent)
+                addLog("[$timeStr] 偵測到來電響鈴: $currentPhoneNumber\n")
+                
                 // 自動接聽來電 (延遲 1.5 秒以確保系統通話狀態完全就緒)
                 thread {
                     try {
@@ -233,10 +247,7 @@ class CallMonitorService : Service() {
             "OFFHOOK" -> {
                 updateNotification("通話進行中 - 正在監聽語音")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
-                logIntent.putExtra("log", "[$timeStr] 電話已接通，啟動語音辨識...\n")
-                logIntent.setPackage(packageName)
-                sendBroadcast(logIntent)
+                addLog("[$timeStr] 電話已接通，啟動語音辨識...\n")
                 
                 // 必須開啟擴音，Android 系統才允許麥克風側錄通話對方的聲音
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
@@ -251,10 +262,7 @@ class CallMonitorService : Service() {
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
-                logIntent.putExtra("log", "[$timeStr] 通話結束，停止辨識\n---\n")
-                logIntent.setPackage(packageName)
-                sendBroadcast(logIntent)
+                addLog("[$timeStr] 通話結束，停止辨識\n---\n")
                 
                 // 恢復一般音訊設定
                 audioManager.mode = AudioManager.MODE_NORMAL
@@ -292,10 +300,7 @@ class CallMonitorService : Service() {
                         isRecognizerActive = true
                         
                         val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                        val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
-                        logIntent.putExtra("log", "[$timeStr] 麥克風已就緒，開始收音...\n")
-                        logIntent.setPackage(packageName)
-                        sendBroadcast(logIntent)
+                        addLog("[$timeStr] 麥克風已就緒，開始收音...\n")
                     }
                     override fun onBeginningOfSpeech() {}
                     override fun onRmsChanged(rmsdB: Float) {}
@@ -318,10 +323,7 @@ class CallMonitorService : Service() {
                         Log.e("SpeechRecognizer", "辨識錯誤碼: $error ($errorDesc)")
                         
                         val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                        val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
-                        logIntent.putExtra("log", "[$timeStr] 辨識暫停 ($errorDesc)\n---\n")
-                        logIntent.setPackage(packageName)
-                        sendBroadcast(logIntent)
+                        addLog("[$timeStr] 辨識暫停 ($errorDesc)\n---\n")
                         
                         isRecognizerActive = false
                         // 失敗後，如果仍在監聽狀態，延遲重試
@@ -340,10 +342,7 @@ class CallMonitorService : Service() {
                             val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                             val logMsg = "[$timeStr] 來電: $currentPhoneNumber\n辨識內容: $recognizedText\n---\n"
                             
-                            val logIntent = Intent("com.hospital.callmonitor.UPDATE_LOG")
-                            logIntent.putExtra("log", logMsg)
-                            logIntent.setPackage(packageName)
-                            sendBroadcast(logIntent)
+                            addLog(logMsg)
                             
                             Handler(Looper.getMainLooper()).post {
                                 Toast.makeText(applicationContext, "辨識到: $recognizedText", Toast.LENGTH_SHORT).show()

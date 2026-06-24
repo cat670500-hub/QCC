@@ -51,27 +51,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // 註冊廣播接收器來更新日誌
-        val filter = android.content.IntentFilter("com.hospital.callmonitor.UPDATE_LOG")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(logReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(logReceiver, filter)
+        // 註冊靜態回呼來更新日誌
+        CallMonitorService.logListener = { msg ->
+            runOnUiThread {
+                val currentText = txtLogHistory.text.toString()
+                // 最新的放在最上面
+                txtLogHistory.text = msg + currentText
+            }
         }
     }
-    
-    private val logReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val logMsg = intent?.getStringExtra("log") ?: return
-            val currentText = txtLogHistory.text.toString()
-            // 最新的放在最上面
-            txtLogHistory.text = logMsg + currentText
-        }
-    }
-    
+
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(logReceiver)
+        CallMonitorService.logListener = null
     }
 
     private fun startMonitorService() {
