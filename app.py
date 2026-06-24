@@ -722,6 +722,9 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("十一", "11")
     text_clean = text_clean.replace("十二", "12")
     
+    # 處理急診的常見語音誤判
+    text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
+    
     if bed_clean in text_clean:
         return True
         
@@ -739,7 +742,7 @@ def voice_dispatch():
     print(f"[{time.strftime('%H:%M:%S')}] 收到來電: {phone_number}, 語音對話: {text}")
     
     # 進行對話分析，並 cross-reference 目前爬蟲抓到的病患清單
-    matched_patient = None
+    matched_patients = []
     
     # 1. 先用病歷號比對 (6-10 位數字)
     record_numbers = re.findall(r'\d{6,10}', text)
@@ -748,67 +751,64 @@ def voice_dispatch():
             r_no_clean = str(r_no).strip()
             for p in patients_data:
                 if str(p.get('record_no', '')).strip() == r_no_clean:
-                    matched_patient = p
-                    break
-            if matched_patient:
-                break
-                
+                    matched_patients.append(p)
+                    
     # 2. 如果病歷號沒配對到，用病患姓名比對
-    if not matched_patient:
+    if not matched_patients:
         for p in patients_data:
             p_name = str(p.get('name', '')).strip()
             if p_name and is_fuzzy_name_match(text, p_name):
-                matched_patient = p
-                break
+                matched_patients.append(p)
                 
     # 3. 如果姓名也沒配對到，用床號比對
-    if not matched_patient:
+    if not matched_patients:
         for p in patients_data:
             p_bed = str(p.get('bed', '')).strip()
             if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and is_fuzzy_bed_match(text, p_bed):
-                matched_patient = p
-                break
+                matched_patients.append(p)
                 
-    # 永遠紀錄語音歷程，方便除錯與追蹤
-    log_voice_call(text, matched_patient, phone_number)
+    # 永遠紀錄語音歷程，方便除錯與追蹤 (取第一筆代表)
+    first_match = matched_patients[0] if matched_patients else None
+    log_voice_call(text, first_match, phone_number)
                 
     # 4. 如果找到了配對的病患，根據語音內容判斷是否觸發動作
-    if matched_patient:
-        # 無論是否有提到照相，只要是來電語音有比對到病患，就預設顯示需照相的紅色警告
+    if matched_patients:
         alert_text = "🚨 需照相"
-            
-        matched_record_no = str(matched_patient.get('record_no', '')).strip()
-        matched_exam = str(matched_patient.get('exam', '')).strip()
-        matched_acc = str(matched_patient.get('accession_no', '')).strip()
-        matched_ord = str(matched_patient.get('order_no', '')).strip()
-        matched_req = matched_acc if matched_acc else matched_ord
-        patient_key = f"{matched_record_no}|{matched_exam}|{matched_req}"
         
-        for p in patients_data:
-            p_rec = str(p.get('record_no', '')).strip()
-            p_ex = str(p.get('exam', '')).strip()
-            p_acc = str(p.get('accession_no', '')).strip()
-            p_ord = str(p.get('order_no', '')).strip()
-            p_req = p_acc if p_acc else p_ord
-            if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
-                p['voice_mentioned'] = True
-                p['voice_alert'] = alert_text
-                break
+        # 標記所有匹配到的病患
+        for mp in matched_patients:
+            matched_record_no = str(mp.get('record_no', '')).strip()
+            matched_exam = str(mp.get('exam', '')).strip()
+            matched_acc = str(mp.get('accession_no', '')).strip()
+            matched_ord = str(mp.get('order_no', '')).strip()
+            matched_req = matched_acc if matched_acc else matched_ord
+            patient_key = f"{matched_record_no}|{matched_exam}|{matched_req}"
+            
+            for p in patients_data:
+                p_rec = str(p.get('record_no', '')).strip()
+                p_ex = str(p.get('exam', '')).strip()
+                p_acc = str(p.get('accession_no', '')).strip()
+                p_ord = str(p.get('order_no', '')).strip()
+                p_req = p_acc if p_acc else p_ord
+                if f"{p_rec}|{p_ex}|{p_req}" == patient_key:
+                    p['voice_mentioned'] = True
+                    p['voice_alert'] = alert_text
+                    break
                 
         patients_data = sort_patients(patients_data)
         socketio.emit('patients_updated', patients_data)
         socketio.emit('voice_logs_updated', get_voice_logs_list())
         
-        print(f"[語音提示] 來電語音提到病患: {matched_patient.get('name')}，更新卡片高亮狀態。")
+        print(f"[語音提示] 來電語音提到病患 (共 {len(matched_patients)} 位)，更新卡片高亮狀態。")
         socketio.emit('voice_mention_alert', {
-            'patient': matched_patient,
+            'patient': matched_patients[0],
             'text': text
         })
             
         return jsonify({
             "status": "success", 
             "matched": True, 
-            "patient": matched_patient,
+            "patient": matched_patients[0],
             "action": "voice_mentioned"
         })
         
