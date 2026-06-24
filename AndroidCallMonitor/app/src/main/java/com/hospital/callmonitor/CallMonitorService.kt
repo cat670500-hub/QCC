@@ -120,18 +120,7 @@ class CallMonitorService : Service() {
 
     private var phoneStateListener: android.telephony.PhoneStateListener? = null
 
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            if (phoneStateListener != null) {
-                val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
-                telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_NONE)
-            }
-        } catch (e: Exception) {}
-        stopSpeechRecognition()
-        stopAudioRecording()
-        mSocket?.disconnect()
-    }
+
 
     // 移除 TTS 相關初始化函數
 
@@ -564,7 +553,14 @@ class CallMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            if (phoneStateListener != null) {
+                val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                telephonyManager.listen(phoneStateListener, android.telephony.PhoneStateListener.LISTEN_NONE)
+            }
+        } catch (e: Exception) {}
         stopSpeechRecognition()
+        stopAudioRecording()
         try {
             mSocket?.disconnect()
             mSocket?.off()
