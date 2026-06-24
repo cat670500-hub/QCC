@@ -702,25 +702,26 @@ def is_fuzzy_bed_match(text, bed_no):
     bed_clean = str(bed_no).replace(" ", "").replace("　", "").lower()
     
     # 針對台灣護理人員常見發音的語音誤判進行正規化
-    text_clean = re.sub(r'[比逼嗶幣]', 'b', text_clean)
-    text_clean = re.sub(r'[欸]', 'a', text_clean)
-    text_clean = re.sub(r'[西]', 'c', text_clean)
-    text_clean = re.sub(r'[低]', 'd', text_clean)
+    text_clean = re.sub(r'[欸誒]', 'a', text_clean)
+    text_clean = re.sub(r'[比逼嗶幣必壁閉]', 'b', text_clean)
+    text_clean = re.sub(r'[西吸希]', 'c', text_clean)
+    text_clean = re.sub(r'[低滴豬]', 'd', text_clean)
+    text_clean = re.sub(r'[伊依醫]', 'e', text_clean)
+    text_clean = re.sub(r'[欸夫]', 'f', text_clean)
+    text_clean = re.sub(r'[居雞]', 'g', text_clean)
+    text_clean = re.sub(r'[區]', 'q', text_clean)
     
-    text_clean = re.sub(r'[洞零]', '0', text_clean)
-    text_clean = re.sub(r'[么一]', '1', text_clean)
+    # 數字軍警用與常見發音
+    text_clean = re.sub(r'[洞動棟零]', '0', text_clean)
+    text_clean = re.sub(r'[么要依一伊]', '1', text_clean)
     text_clean = re.sub(r'[兩二]', '2', text_clean)
-    text_clean = re.sub(r'[三]', '3', text_clean)
-    text_clean = re.sub(r'[四]', '4', text_clean)
-    text_clean = re.sub(r'[五]', '5', text_clean)
-    text_clean = re.sub(r'[六]', '6', text_clean)
-    text_clean = re.sub(r'[七]', '7', text_clean)
-    text_clean = re.sub(r'[八]', '8', text_clean)
-    text_clean = re.sub(r'[九]', '9', text_clean)
-    
-    # 處理 "十一" -> "11" 這種特例
-    text_clean = text_clean.replace("十一", "11")
-    text_clean = text_clean.replace("十二", "12")
+    text_clean = re.sub(r'[散山三]', '3', text_clean)
+    text_clean = re.sub(r'[速事寺四]', '4', text_clean)
+    text_clean = re.sub(r'[無舞五]', '5', text_clean)
+    text_clean = re.sub(r'[溜流六]', '6', text_clean)
+    text_clean = re.sub(r'[拐漆七]', '7', text_clean)
+    text_clean = re.sub(r'[杯八把]', '8', text_clean)
+    text_clean = re.sub(r'[勾狗酒九]', '9', text_clean)
     
     # 處理急診的常見語音誤判
     text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
