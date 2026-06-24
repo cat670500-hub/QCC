@@ -689,6 +689,44 @@ def is_fuzzy_name_match(text, patient_name):
                 return True
     return False
 
+def is_fuzzy_bed_match(text, bed_no):
+    """
+    模糊比對床號，處理常見的語音辨識英文與數字誤差 (例如: 11B01 辨識為 11比01 或 十一逼洞么)
+    """
+    if not text or not bed_no:
+        return False
+        
+    # 去除所有空白與轉小寫
+    import re
+    text_clean = str(text).replace(" ", "").replace("　", "").lower()
+    bed_clean = str(bed_no).replace(" ", "").replace("　", "").lower()
+    
+    # 針對台灣護理人員常見發音的語音誤判進行正規化
+    text_clean = re.sub(r'[比逼嗶幣]', 'b', text_clean)
+    text_clean = re.sub(r'[欸]', 'a', text_clean)
+    text_clean = re.sub(r'[西]', 'c', text_clean)
+    text_clean = re.sub(r'[低]', 'd', text_clean)
+    
+    text_clean = re.sub(r'[洞零]', '0', text_clean)
+    text_clean = re.sub(r'[么一]', '1', text_clean)
+    text_clean = re.sub(r'[兩二]', '2', text_clean)
+    text_clean = re.sub(r'[三]', '3', text_clean)
+    text_clean = re.sub(r'[四]', '4', text_clean)
+    text_clean = re.sub(r'[五]', '5', text_clean)
+    text_clean = re.sub(r'[六]', '6', text_clean)
+    text_clean = re.sub(r'[七]', '7', text_clean)
+    text_clean = re.sub(r'[八]', '8', text_clean)
+    text_clean = re.sub(r'[九]', '9', text_clean)
+    
+    # 處理 "十一" -> "11" 這種特例
+    text_clean = text_clean.replace("十一", "11")
+    text_clean = text_clean.replace("十二", "12")
+    
+    if bed_clean in text_clean:
+        return True
+        
+    return False
+
 @app.route('/api/voice_dispatch', methods=['POST'])
 def voice_dispatch():
     global patients_data
@@ -727,14 +765,15 @@ def voice_dispatch():
     if not matched_patient:
         for p in patients_data:
             p_bed = str(p.get('bed', '')).strip()
-            if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and p_bed.lower() in text.lower():
+            if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and is_fuzzy_bed_match(text, p_bed):
                 matched_patient = p
                 break
                 
+    # 永遠紀錄語音歷程，方便除錯與追蹤
+    log_voice_call(text, matched_patient, phone_number)
+                
     # 4. 如果找到了配對的病患，根據語音內容判斷是否觸發動作
     if matched_patient:
-        log_voice_call(text, matched_patient, phone_number)
-        
         # 無論是否有提到照相，只要是來電語音有比對到病患，就預設顯示需照相的紅色警告
         alert_text = "🚨 需照相"
             
