@@ -730,6 +730,16 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("十九", "19")
     text_clean = re.sub(r'[十石時實食]', '10', text_clean)
     
+    # 針對 ICU 等單字誤判 (例如 I see you, 麥哭)
+    text_clean = text_clean.replace("see", "c")
+    text_clean = text_clean.replace("sea", "c")
+    text_clean = text_clean.replace("you", "u")
+    text_clean = text_clean.replace("eye", "i")
+    text_clean = text_clean.replace("麥哭", "micu")
+    text_clean = text_clean.replace("吸哭", "sicu")
+    text_clean = text_clean.replace("泥哭", "nicu")
+    text_clean = text_clean.replace("屁哭", "picu")
+    
     # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母)
     text_clean = re.sub(r'[欸誒黑]', 'a', text_clean)
     text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平]', 'b', text_clean)
@@ -761,7 +771,7 @@ def is_fuzzy_bed_match(text, bed_no):
     # 特殊的連音誤判 (十一B 聽起來像 CB)
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
-    text_clean = text_clean.replace("cc", "11c")
+    text_clean = re.sub(r'cc(?!u)', '11c', text_clean) # 如果是 ccu 就不轉，否則轉 11c
     text_clean = text_clean.replace("cv", "11b")
     text_clean = text_clean.replace("cbr", "11b")
     text_clean = text_clean.replace("siri", "11b")
