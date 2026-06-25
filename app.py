@@ -736,6 +736,11 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = re.sub(r'[歪外]', 'y', text_clean)
     text_clean = re.sub(r'[立力麗]', 'z', text_clean)
     
+    # 特殊的連音誤判 (十一B 聽起來像 CB)
+    text_clean = text_clean.replace("cb", "11b")
+    text_clean = text_clean.replace("ca", "11a")
+    text_clean = text_clean.replace("cc", "11c")
+    
     # 數字軍警用與常見發音
     text_clean = re.sub(r'[洞動棟零林鈴靈]', '0', text_clean)
     text_clean = re.sub(r'[么要一以已義意]', '1', text_clean) # 移除了"伊依"，因為它們已配對到'e'
@@ -751,8 +756,8 @@ def is_fuzzy_bed_match(text, bed_no):
     # 處理急診的常見語音誤判
     text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
     
-    # 移除常見的口語贅字
-    fluff_pattern = r'[樓床房號室區的那個這]'
+    # 移除常見的口語贅字與奇怪的辨識結果 (如「床頭板」被聽成「臭豆腐」)
+    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆pro]'
     text_clean = re.sub(fluff_pattern, '', text_clean)
     bed_clean = re.sub(fluff_pattern, '', bed_clean)
     
