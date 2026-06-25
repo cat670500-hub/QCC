@@ -723,7 +723,7 @@ def is_fuzzy_bed_match(text, bed_no):
     
     # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母)
     text_clean = re.sub(r'[欸誒黑]', 'a', text_clean)
-    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並]', 'b', text_clean)
+    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平]', 'b', text_clean)
     text_clean = re.sub(r'[西吸希洗細戲系]', 'c', text_clean)
     text_clean = re.sub(r'[低滴豬弟地底第]', 'd', text_clean)
     text_clean = re.sub(r'[伊依醫衣易]', 'e', text_clean)
@@ -753,6 +753,8 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
     text_clean = text_clean.replace("cc", "11c")
+    text_clean = text_clean.replace("cpu", "11b1") # CPU -> 十一B么 -> 11B01
+    text_clean = text_clean.replace("cp", "11b")
     
     # 數字軍警用與常見發音
     text_clean = re.sub(r'[洞動棟零林鈴靈]', '0', text_clean)
@@ -770,7 +772,7 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
     
     # 移除常見的口語贅字與奇怪的辨識結果 (如「床頭板」被聽成「臭豆腐」)
-    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆pro]'
+    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep]'
     text_clean = re.sub(fluff_pattern, '', text_clean)
     bed_clean = re.sub(fluff_pattern, '', bed_clean)
     
@@ -780,6 +782,11 @@ def is_fuzzy_bed_match(text, bed_no):
     bed_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', bed_clean)
     
     if bed_clean in text_clean:
+        return True
+        
+    # 如果語音被截斷 (例如只聽到 11b，但實際床號是 11b1)
+    # 只要聽到的長度夠長 (大於等於3個字元)，且是床號的一部分，也算配對成功
+    if len(text_clean) >= 3 and text_clean in bed_clean:
         return True
         
     return False
