@@ -261,10 +261,8 @@ class CallMonitorService : Service() {
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioManager.isSpeakerphoneOn = true
                 
-                // 接通後延遲啟動語音辨識，確保系統的通話音訊路由已準備完畢，避免麥克風被獨佔導致崩潰
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    startSpeechRecognition()
-                }, 800)
+                // 接通後立刻啟動語音辨識
+                startSpeechRecognition()
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
@@ -336,10 +334,10 @@ class CallMonitorService : Service() {
                         addLog("[$timeStr] 辨識暫停 ($errorDesc)\n---\n")
                         
                         isRecognizerActive = false
-                        // 失敗後，如果仍在監聽狀態，延遲重試
-                        Handler(Looper.getMainLooper()).postDelayed({
+                        // 失敗後，如果仍在監聽狀態，快速延遲重試
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             startSpeechRecognition()
-                        }, 1000)
+                        }, 500)
                     }
 
                     override fun onResults(results: Bundle?) {
