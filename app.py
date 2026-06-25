@@ -723,7 +723,7 @@ def is_fuzzy_bed_match(text, bed_no):
     
     # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母)
     text_clean = re.sub(r'[欸誒黑]', 'a', text_clean)
-    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂]', 'b', text_clean)
+    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並]', 'b', text_clean)
     text_clean = re.sub(r'[西吸希洗細戲系]', 'c', text_clean)
     text_clean = re.sub(r'[低滴豬弟地底第]', 'd', text_clean)
     text_clean = re.sub(r'[伊依醫衣易]', 'e', text_clean)
