@@ -251,26 +251,6 @@ class CallMonitorService : Service() {
                 updateNotification("來電響鈴中: $currentPhoneNumber")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 addLog("[$timeStr] 偵測到來電響鈴: $currentPhoneNumber\n")
-                
-                // 自動接聽來電 (延遲 1.5 秒以確保系統通話狀態完全就緒)
-                thread {
-                    try {
-                        Thread.sleep(1500)
-                        val telecomManager = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                        if (androidx.core.content.ContextCompat.checkSelfPermission(this@CallMonitorService, android.Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                telecomManager.acceptRingingCall()
-                                Log.d("CallMonitorService", "✅ 已自動接聽來電: $phoneNumber")
-                            } else {
-                                Log.w("CallMonitorService", "SDK 版本低於 Oreo (26)，不支援 acceptRingingCall()")
-                            }
-                        } else {
-                            Log.e("CallMonitorService", "未獲得 ANSWER_PHONE_CALLS 權限，無法自動接聽！")
-                        }
-                    } catch (e: Exception) {
-                        Log.e("CallMonitorService", "自動接聽來電時發生錯誤: ${e.message}")
-                    }
-                }
             }
             "OFFHOOK" -> {
                 updateNotification("通話進行中 - 正在監聽語音")
