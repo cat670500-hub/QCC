@@ -264,7 +264,7 @@ class CallMonitorService : Service() {
                 // 接通後延遲啟動語音辨識，確保系統的通話音訊路由已準備完畢，避免麥克風被獨佔導致崩潰
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     startSpeechRecognition()
-                }, 1500)
+                }, 800)
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
@@ -298,6 +298,10 @@ class CallMonitorService : Service() {
                     putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false) // 只取得完整句子
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5) // 要求提供多個候選辨識結果
+                    
+                    // 縮短語音結束後的靜音等待時間 (加速辨識結果產出)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
