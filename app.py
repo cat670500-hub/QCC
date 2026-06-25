@@ -753,8 +753,12 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
     text_clean = text_clean.replace("cc", "11c")
+    text_clean = text_clean.replace("cv", "11b")
+    text_clean = text_clean.replace("cbr", "11b")
+    text_clean = text_clean.replace("siri", "11b")
     text_clean = text_clean.replace("cpu", "11b1") # CPU -> 十一B么 -> 11B01
     text_clean = text_clean.replace("cp", "11b")
+    text_clean = text_clean.replace("11101", "11b1") # 11 101 -> 11B01
     
     # 數字軍警用與常見發音
     text_clean = re.sub(r'[洞動棟零林鈴靈]', '0', text_clean)
@@ -772,7 +776,7 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
     
     # 移除常見的口語贅字與奇怪的辨識結果 (如「床頭板」被聽成「臭豆腐」)
-    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep]'
+    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep跨了嗎吧擴大寶寶]'
     text_clean = re.sub(fluff_pattern, '', text_clean)
     bed_clean = re.sub(fluff_pattern, '', bed_clean)
     
@@ -781,14 +785,20 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', text_clean)
     bed_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', bed_clean)
     
-    if bed_clean in text_clean:
-        return True
-        
-    # 如果語音被截斷 (例如只聽到 11b，但實際床號是 11b1)
-    # 只要聽到的長度夠長 (大於等於3個字元)，且是床號的一部分，也算配對成功
-    if len(text_clean) >= 3 and text_clean in bed_clean:
-        return True
-        
+    # 因為語音可能回傳多個候選結果 (例如 a|b|c)，需要切開來個別判斷
+    candidates = text_clean.split('|')
+    for candidate in candidates:
+        if not candidate:
+            continue
+            
+        if bed_clean in candidate:
+            return True
+            
+        # 如果語音被截斷 (例如只聽到 11b，但實際床號是 11b1)
+        # 只要聽到的長度夠長 (大於等於3個字元)，且是床號的一部分，也算配對成功
+        if len(candidate) >= 3 and candidate in bed_clean:
+            return True
+            
     return False
 
 @app.route('/api/voice_dispatch', methods=['POST'])
