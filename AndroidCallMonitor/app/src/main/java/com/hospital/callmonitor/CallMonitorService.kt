@@ -261,8 +261,10 @@ class CallMonitorService : Service() {
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioManager.isSpeakerphoneOn = true
                 
-                // 接通後啟動語音辨識
-                startSpeechRecognition()
+                // 接通後延遲啟動語音辨識，確保系統的通話音訊路由已準備完畢，避免麥克風被獨佔導致崩潰
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    startSpeechRecognition()
+                }, 1500)
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
