@@ -242,11 +242,11 @@ def hospital_check_in(token, accession_no, is_check_in=True):
         return False
 
 def is_critical_care_bed(bed):
-    """判斷床號是否屬於重症病房 (MICU, SICU, CCU, NCU, RCC, CIU, SIU 等)"""
+    """判斷床號是否屬於重症病房 (MICU, SICU, CCU, NCU, RCC, CIU, SIU, NBC, NB 等)"""
     if not bed:
         return False
     bed_upper = str(bed).upper().strip()
-    critical_keywords = ['ICU', 'MIU', 'NCU', 'RCC', 'CCU', 'SICU', 'SIU', 'CIU', 'PICU', 'NICU', 'BICU', 'EICU', 'RICU', 'RCW']
+    critical_keywords = ['ICU', 'MIU', 'NCU', 'RCC', 'CCU', 'SICU', 'SIU', 'CIU', 'PICU', 'NICU', 'BICU', 'EICU', 'RICU', 'RCW', 'NBC', 'NB']
     return any(kw in bed_upper for kw in critical_keywords)
 
 def fetch_live_patients(token):
@@ -328,8 +328,8 @@ def parse_patients(raw_items):
         source = str(item.get('PatientSourceTypeName') or '').strip()
         source_code = str(item.get('PatientSourceTypeCode') or '').strip()
         
-        # 條件 1：醫令名稱符合 'Chest(AP)Portable'
-        is_chest_portable = (proc_name == 'Chest(AP)Portable')
+        # 條件 1：醫令名稱符合 'Chest(AP)Portable' 或是包含 'Babygram'
+        is_chest_portable = (proc_name == 'Chest(AP)Portable') or ('babygram' in proc_name.lower())
         
         # 條件 2：病床號符合重症病房 (只抓取 CR 的檢查，即 CR 或 DX 儀器類別)
         is_icu = is_critical_care_bed(bed) and (modality in ['CR', 'DX'])

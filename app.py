@@ -739,39 +739,57 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("吸哭", "sicu")
     text_clean = text_clean.replace("泥哭", "nicu")
     text_clean = text_clean.replace("屁哭", "picu")
-    
-    # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母)
-    text_clean = re.sub(r'[欸誒黑ㄟ]', 'a', text_clean)
-    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平]', 'b', text_clean)
-    text_clean = re.sub(r'[西吸希洗細戲系嘻膝]', 'c', text_clean)
-    text_clean = re.sub(r'[低滴豬弟地底第笛]', 'd', text_clean)
-    text_clean = re.sub(r'[伊依醫衣易億意]', 'e', text_clean)
-    text_clean = re.sub(r'[欸夫]', 'f', text_clean)
-    text_clean = re.sub(r'[居雞機基吉局橘]', 'g', text_clean)
-    text_clean = re.sub(r'[欸取曲]', 'h', text_clean)
-    text_clean = re.sub(r'[愛哀哎唉挨]', 'i', text_clean)
-    text_clean = re.sub(r'[賊街接結節潔]', 'j', text_clean)
-    text_clean = re.sub(r'[虧客]', 'k', text_clean)
-    text_clean = re.sub(r'[欸樓囉]', 'l', text_clean)
-    text_clean = re.sub(r'[欸母姆]', 'm', text_clean)
-    text_clean = re.sub(r'[恩安按暗嗯]', 'n', text_clean)
-    text_clean = re.sub(r'[歐偶喔]', 'o', text_clean)
-    text_clean = re.sub(r'[批屁劈皮疲]', 'p', text_clean)
-    text_clean = re.sub(r'[區去取扣]', 'q', text_clean)
-    text_clean = re.sub(r'[阿啊爾耳]', 'r', text_clean)
-    text_clean = re.sub(r'[欸死斯絲]', 's', text_clean)
-    text_clean = re.sub(r'[梯踢體替題]', 't', text_clean)
-    text_clean = re.sub(r'[優油右有]', 'u', text_clean)
-    text_clean = re.sub(r'[微威]', 'v', text_clean)
-    text_clean = re.sub(r'[大波溜達布溜]', 'w', text_clean)
-    text_clean = re.sub(r'[欸克斯]', 'x', text_clean)
-    text_clean = re.sub(r'[歪外壞]', 'y', text_clean)
-    text_clean = re.sub(r'[立力麗日]', 'z', text_clean)
+
+    # 處理多字元與急診的常見語音誤判 (必須在單一字母與數字轉換前執行，避免單字被錯誤拆解)
+    text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
+    text_clean = text_clean.replace("呼吸照護中心", "rcc")
+    text_clean = text_clean.replace("呼吸照護", "rcc")
+    text_clean = text_clean.replace("阿西西", "rcc")
+    text_clean = text_clean.replace("啊西西", "rcc")
+    text_clean = text_clean.replace("阿cc", "rcc")
+    text_clean = text_clean.replace("啊cc", "rcc")
+    text_clean = text_clean.replace("達布溜", "w")
+    text_clean = text_clean.replace("打不溜", "w")
+    text_clean = text_clean.replace("欸克斯", "x")
+    text_clean = text_clean.replace("艾克斯", "x")
+    text_clean = text_clean.replace("欸夫", "f")
+    text_clean = text_clean.replace("欸取", "h")
+    text_clean = text_clean.replace("欸樓", "l")
+    text_clean = text_clean.replace("欸母", "m")
+    text_clean = text_clean.replace("艾斯", "s")
+
+    # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母單字)
+    text_clean = re.sub(r'[欸誒黑ㄟ耶亞Aa]', 'a', text_clean)
+    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平Bb]', 'b', text_clean)
+    text_clean = re.sub(r'[西吸希洗細戲系嘻膝夕席息習喜Cc]', 'c', text_clean)
+    text_clean = re.sub(r'[低滴豬弟地底第笛狄迪抵遞Dd]', 'd', text_clean)
+    text_clean = re.sub(r'[伊依醫衣易億意移疑椅異益Ee]', 'e', text_clean)
+    text_clean = re.sub(r'[夫府Ff]', 'f', text_clean)
+    text_clean = re.sub(r'[居雞機基吉局橘擠幾紀記激及級極集Gg]', 'g', text_clean)
+    text_clean = re.sub(r'[曲Hh]', 'h', text_clean)
+    text_clean = re.sub(r'[愛哀哎唉挨Ii]', 'i', text_clean)
+    text_clean = re.sub(r'[賊街接結節潔Jj]', 'j', text_clean)
+    text_clean = re.sub(r'[虧客Kk克]', 'k', text_clean)
+    text_clean = re.sub(r'[囉Ll]', 'l', text_clean)
+    text_clean = re.sub(r'[姆妹Mm]', 'm', text_clean)
+    text_clean = re.sub(r'[恩安按暗嗯Nn]', 'n', text_clean)
+    text_clean = re.sub(r'[歐偶喔Oo]', 'o', text_clean)
+    text_clean = re.sub(r'[批屁劈疲皮Pp]', 'p', text_clean)
+    text_clean = re.sub(r'[區去取扣秋丘邱Qq]', 'q', text_clean)
+    text_clean = re.sub(r'[阿啊爾耳Rr]', 'r', text_clean)
+    text_clean = re.sub(r'[死斯絲Ss]', 's', text_clean)
+    text_clean = re.sub(r'[梯踢體替題特Tt]', 't', text_clean)
+    text_clean = re.sub(r'[優油右有Uu]', 'u', text_clean)
+    text_clean = re.sub(r'[微威Vv]', 'v', text_clean)
+    text_clean = re.sub(r'[Ww]', 'w', text_clean)
+    text_clean = re.sub(r'[Xx]', 'x', text_clean)
+    text_clean = re.sub(r'[歪外壞Yy]', 'y', text_clean)
+    text_clean = re.sub(r'[立力麗日利李理Zz]', 'z', text_clean)
     
     # 特殊的連音誤判 (十一B 聽起來像 CB)
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
-    text_clean = re.sub(r'cc(?!u)', '11c', text_clean) # 如果是 ccu 就不轉，否則轉 11c
+    text_clean = re.sub(r'(?<!r)cc(?!u)', '11c', text_clean) # 如果是 ccu 或 rcc 就不轉，否則轉 11c
     text_clean = text_clean.replace("cv", "11b")
     text_clean = text_clean.replace("cbr", "11b")
     text_clean = text_clean.replace("siri", "11b")
@@ -779,30 +797,48 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("cp", "11b")
     text_clean = text_clean.replace("11101", "11b1") # 11 101 -> 11B01
     
-    # 數字軍警用與常見發音
-    text_clean = re.sub(r'[洞動棟零林鈴靈]', '0', text_clean)
-    text_clean = re.sub(r'[么要一以已義意]', '1', text_clean) # 移除了"伊依"，因為它們已配對到'e'
-    text_clean = re.sub(r'[兩二兒耳而]', '2', text_clean)
-    text_clean = re.sub(r'[散山三傘]', '3', text_clean)
-    text_clean = re.sub(r'[速事寺四死獅]', '4', text_clean)
-    text_clean = re.sub(r'[無舞五屋物誤]', '5', text_clean)
-    text_clean = re.sub(r'[溜流六路綠]', '6', text_clean)
-    text_clean = re.sub(r'[拐漆七起氣妻]', '7', text_clean)
-    text_clean = re.sub(r'[杯八把爸霸吧]', '8', text_clean)
-    text_clean = re.sub(r'[勾狗酒九久舊舅]', '9', text_clean)
+    # 各樓層常見的英文字母連音誤判 (例如 9A 聽起來像 QA)
+    text_clean = text_clean.replace("qa", "9a")
+    text_clean = text_clean.replace("qb", "9b")
+    text_clean = text_clean.replace("qc", "9c")
+    text_clean = text_clean.replace("ba", "8a")
+    text_clean = text_clean.replace("bb", "8b")
+    text_clean = text_clean.replace("bc", "8c")
+    text_clean = text_clean.replace("sa", "10a")
+    text_clean = text_clean.replace("sb", "10b")
+    text_clean = text_clean.replace("sc", "10c")
+    text_clean = text_clean.replace("la", "6a")
+    text_clean = text_clean.replace("lb", "6b")
+    text_clean = text_clean.replace("lc", "6c")
+    text_clean = text_clean.replace("wa", "5a")
+    text_clean = text_clean.replace("wb", "5b")
+    text_clean = text_clean.replace("wc", "5c")
     
-    # 處理急診的常見語音誤判
-    text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
+    # 數字軍警用與常見發音
+    text_clean = re.sub(r'[洞動棟零林鈴靈另]', '0', text_clean)
+    text_clean = re.sub(r'[么要一以已義]', '1', text_clean) # 移除了"意醫"，因為它們已配對到'e'
+    text_clean = re.sub(r'[兩二兒耳而]', '2', text_clean)
+    text_clean = re.sub(r'[散山三傘閃]', '3', text_clean)
+    text_clean = re.sub(r'[速事寺四死獅適]', '4', text_clean)
+    text_clean = re.sub(r'[無舞五屋物誤午武]', '5', text_clean)
+    text_clean = re.sub(r'[溜流六路綠陸錄]', '6', text_clean)
+    text_clean = re.sub(r'[拐漆七起氣妻期奇騎]', '7', text_clean)
+    text_clean = re.sub(r'[杯八把爸霸吧拔]', '8', text_clean)
+    text_clean = re.sub(r'[勾狗酒九久舊舅救就]', '9', text_clean)
     
     # 移除常見的口語贅字與奇怪的辨識結果 (如「床頭板」被聽成「臭豆腐」)
     fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep跨了嗎吧擴大寶寶]'
     text_clean = re.sub(fluff_pattern, '', text_clean)
     bed_clean = re.sub(fluff_pattern, '', bed_clean)
     
+    # 清除床號中的連接號與底線，讓 7c01-2 與 7c012 能正確配對
+    text_clean = text_clean.replace("-", "").replace("_", "")
+    bed_clean = bed_clean.replace("-", "").replace("_", "")
+    
     # 針對英文字母後面的「0」進行防呆正規化 (例如 11B01 和 11B1 應該要能互通)
-    # 把字母後面的 0 拔掉，讓 11b01 變成 11b1
-    text_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', text_clean)
-    bed_clean = re.sub(r'([a-z])0+(\d)', r'\1\2', bed_clean)
+    # 加上 (?!\d) 條件：只有當數字是最後一位時才拔除 0，避免 7C01-2 (7c012) 被拔成 7c12 而與 7C12 衝突
+    text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean)
+    bed_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', bed_clean)
     
     # 因為語音可能回傳多個候選結果 (例如 a|b|c)，需要切開來個別判斷
     candidates = text_clean.split('|')
@@ -811,7 +847,13 @@ def is_fuzzy_bed_match(text, bed_no):
             continue
             
         if bed_clean in candidate:
-            return True
+            # 嚴格化子字串配對：若 bed="7c1", voice="7c12"，因 1 後面緊接數字 2，代表是其他床號，不可配對
+            idx = candidate.find(bed_clean)
+            end_idx = idx + len(bed_clean)
+            if end_idx < len(candidate) and candidate[end_idx].isdigit():
+                pass # 後接數字，為另一獨立床號
+            else:
+                return True
             
         # 如果語音被截斷 (例如只聽到 11b，但實際床號是 11b1)
         # 只要聽到的長度夠長 (大於等於3個字元)，且是床號的一部分，也算配對成功
