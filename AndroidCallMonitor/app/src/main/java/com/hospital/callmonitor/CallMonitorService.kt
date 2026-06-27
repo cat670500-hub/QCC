@@ -349,7 +349,7 @@ class CallMonitorService : Service() {
                             Log.d("SpeechRecognizer", "🎙️ 通話辨識文本: $recognizedText")
                             
                             val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                            val logMsg = "[$timeStr] 來電: $currentPhoneNumber\n辨識內容 (多候選): ${matches[0]}\n---\n"
+                            val logMsg = "[$timeStr] 來電: $currentPhoneNumber\n---\n"
                             
                             addLog(logMsg)
                             

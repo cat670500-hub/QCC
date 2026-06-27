@@ -116,28 +116,28 @@
             <button onclick="clearErrorLogs()" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">🧹 清除所有錯誤日誌</button>
         </div>
         <div style="display: flex; gap: 20px; text-align: left; flex-wrap: wrap;">
-            <div style="flex: 2; min-width: 300px;">
+            <div style="flex: 3; min-width: 400px;">
                 <h3 style="font-size: 1.1rem; color: #444; margin-bottom: 10px;">確認紀錄清單</h3>
                 <ul id="historyList"
                     style="font-size: 0.95rem; color: #555; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; line-height: 1.5;">
                 </ul>
             </div>
-            <div style="flex: 2; min-width: 350px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
+            <div style="flex: 5; min-width: 550px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
                 <h3 style="font-size: 1.1rem; color: #eab308; margin-bottom: 10px;">📞 語音來電紀錄</h3>
                 <ul id="voiceLogList"
                     style="font-size: 0.95rem; color: #d97706; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; line-height: 1.5;">
                 </ul>
             </div>
-            <div style="flex: 1; min-width: 200px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
-                <h3 style="font-size: 1.1rem; color: #ef4444; margin-bottom: 10px;">⚠️ 醫院同步失敗日誌</h3>
+            <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px; display: none;">
+                <h3 onclick="document.getElementById('syncErrorList').style.display = document.getElementById('syncErrorList').style.display === 'none' ? 'block' : 'none'" style="font-size: 1.1rem; color: #ef4444; margin-bottom: 10px; cursor: pointer;" title="點擊展開/隱藏">⚠️ 醫院同步失敗日誌 ⏷</h3>
                 <ul id="syncErrorList"
-                    style="font-size: 0.9rem; color: #ef4444; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
+                    style="display: none; font-size: 0.9rem; color: #ef4444; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
                 </ul>
             </div>
-            <div style="flex: 1; min-width: 200px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px;">
-                <h3 style="font-size: 1.1rem; color: #dc2626; margin-bottom: 10px;">⚠️ 本機報到失敗日誌</h3>
+            <div style="flex: 1; min-width: 250px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 20px; display: none;">
+                <h3 onclick="document.getElementById('localErrorList').style.display = document.getElementById('localErrorList').style.display === 'none' ? 'block' : 'none'" style="font-size: 1.1rem; color: #dc2626; margin-bottom: 10px; cursor: pointer;" title="點擊展開/隱藏">⚠️ 本機報到失敗日誌 ⏷</h3>
                 <ul id="localErrorList"
-                    style="font-size: 0.9rem; color: #dc2626; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
+                    style="display: none; font-size: 0.9rem; color: #dc2626; max-height: 300px; overflow-y: auto; padding-left: 20px; margin: 0; list-style-type: square;">
                 </ul>
             </div>
         </div>

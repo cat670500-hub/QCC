@@ -399,14 +399,15 @@ def log_dispatch(patient_info, time_str):
 
 def log_voice_call(text, matched_patient=None, phone_number="未知"):
     try:
+        parsed_bed = parse_voice_to_bed(text)
         time_str = time.strftime("%Y-%m-%d %H:%M:%S")
         if matched_patient:
             name = matched_patient.get('name', '未知')
             rec_no = matched_patient.get('record_no', '未知')
             bed = matched_patient.get('bed', '無')
-            log_line = f"[{time_str}] 來電: {phone_number} | 語音:「{text}」 | 已配對: {name} ({rec_no}) - 床號: {bed}\n"
+            log_line = f"[{time_str}] 來電: {phone_number} | 床號「{str(bed).upper()}」 | 已配對: {name} ({rec_no}) - 床號: {str(bed).upper()}\n"
         else:
-            log_line = f"[{time_str}] 來電: {phone_number} | 語音:「{text}」 | 未配對病患\n"
+            log_line = f"[{time_str}] 來電: {phone_number} | 床號「{parsed_bed}」 | 未配對床號\n"
         with open("voice_calls.log", "a", encoding="utf-8") as f:
             f.write(log_line)
     except Exception as e:
@@ -689,6 +690,132 @@ def is_fuzzy_name_match(text, patient_name):
                 return True
     return False
 
+def parse_voice_to_bed(text):
+    import re
+    if not text:
+        return ""
+    text_clean = str(text).replace(" ", "").replace("　", "").lower()
+    text_clean = text_clean.replace("二十一", "21")
+    text_clean = text_clean.replace("二十二", "22")
+    text_clean = text_clean.replace("二十三", "23")
+    text_clean = text_clean.replace("二十四", "24")
+    text_clean = text_clean.replace("二十五", "25")
+    text_clean = text_clean.replace("二十六", "26")
+    text_clean = text_clean.replace("二十七", "27")
+    text_clean = text_clean.replace("二十八", "28")
+    text_clean = text_clean.replace("二十九", "29")
+    text_clean = text_clean.replace("二十", "20")
+    text_clean = text_clean.replace("三十", "30")
+    text_clean = text_clean.replace("四十", "40")
+    text_clean = text_clean.replace("五十", "50")
+    text_clean = text_clean.replace("六十", "60")
+    text_clean = text_clean.replace("七十", "70")
+    text_clean = text_clean.replace("八十", "80")
+    text_clean = text_clean.replace("九十", "90")
+    text_clean = text_clean.replace("十一", "11")
+    text_clean = text_clean.replace("十二", "12")
+    text_clean = text_clean.replace("十三", "13")
+    text_clean = text_clean.replace("十四", "14")
+    text_clean = text_clean.replace("十五", "15")
+    text_clean = text_clean.replace("十六", "16")
+    text_clean = text_clean.replace("十七", "17")
+    text_clean = text_clean.replace("十八", "18")
+    text_clean = text_clean.replace("十九", "19")
+    text_clean = re.sub(r'[十石時實食]', '10', text_clean)
+    text_clean = text_clean.replace("see", "c")
+    text_clean = text_clean.replace("sea", "c")
+    text_clean = text_clean.replace("you", "u")
+    text_clean = text_clean.replace("eye", "i")
+    text_clean = text_clean.replace("麥哭", "micu")
+    text_clean = text_clean.replace("吸哭", "sicu")
+    text_clean = text_clean.replace("泥哭", "nicu")
+    text_clean = text_clean.replace("屁哭", "picu")
+    text_clean = re.sub(r'[極吉級幾集即急][疹診整]', '急診', text_clean)
+    text_clean = text_clean.replace("呼吸照護中心", "rcc")
+    text_clean = text_clean.replace("呼吸照護", "rcc")
+    text_clean = text_clean.replace("阿西西", "rcc")
+    text_clean = text_clean.replace("啊西西", "rcc")
+    text_clean = text_clean.replace("阿cc", "rcc")
+    text_clean = text_clean.replace("啊cc", "rcc")
+    text_clean = text_clean.replace("達布溜", "w")
+    text_clean = text_clean.replace("打不溜", "w")
+    text_clean = text_clean.replace("欸克斯", "x")
+    text_clean = text_clean.replace("艾克斯", "x")
+    text_clean = text_clean.replace("欸夫", "f")
+    text_clean = text_clean.replace("欸取", "h")
+    text_clean = text_clean.replace("欸樓", "l")
+    text_clean = text_clean.replace("欸母", "m")
+    text_clean = text_clean.replace("艾斯", "s")
+    text_clean = text_clean.replace("欸死", "s").replace("耶死", "s")
+    text_clean = re.sub(r'[欸誒黑ㄟ耶亞Aa]', 'a', text_clean)
+    text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平Bb]', 'b', text_clean)
+    text_clean = re.sub(r'[西吸希洗細戲系嘻膝夕席息習喜Cc]', 'c', text_clean)
+    text_clean = re.sub(r'[低滴豬弟地底第笛狄迪抵遞Dd]', 'd', text_clean)
+    text_clean = re.sub(r'[伊依醫衣易億意移疑椅異益Ee]', 'e', text_clean)
+    text_clean = re.sub(r'[夫府Ff]', 'f', text_clean)
+    text_clean = re.sub(r'[居雞機基吉局橘擠幾紀記激及級極集Gg]', 'g', text_clean)
+    text_clean = re.sub(r'[曲Hh]', 'h', text_clean)
+    text_clean = re.sub(r'[愛哀哎唉挨Ii]', 'i', text_clean)
+    text_clean = re.sub(r'[賊街接結節潔Jj]', 'j', text_clean)
+    text_clean = re.sub(r'[虧客Kk克]', 'k', text_clean)
+    text_clean = re.sub(r'[囉Ll]', 'l', text_clean)
+    text_clean = re.sub(r'[姆妹Mm]', 'm', text_clean)
+    text_clean = re.sub(r'[恩安按暗嗯Nn]', 'n', text_clean)
+    text_clean = re.sub(r'[歐偶喔Oo]', 'o', text_clean)
+    text_clean = re.sub(r'[批屁劈疲皮Pp]', 'p', text_clean)
+    text_clean = re.sub(r'[區去取扣秋丘邱Qq]', 'q', text_clean)
+    text_clean = re.sub(r'[阿啊爾耳Rr]', 'r', text_clean)
+    text_clean = re.sub(r'[死斯絲Ss]', 's', text_clean)
+    text_clean = re.sub(r'[梯踢體替題特Tt]', 't', text_clean)
+    text_clean = re.sub(r'[優油右有Uu]', 'u', text_clean)
+    text_clean = re.sub(r'[微威Vv]', 'v', text_clean)
+    text_clean = re.sub(r'[Ww]', 'w', text_clean)
+    text_clean = re.sub(r'[Xx]', 'x', text_clean)
+    text_clean = re.sub(r'[歪外壞Yy]', 'y', text_clean)
+    text_clean = re.sub(r'[立力麗日利李理Zz]', 'z', text_clean)
+    text_clean = text_clean.replace("cb", "11b")
+    text_clean = text_clean.replace("ca", "11a")
+    text_clean = re.sub(r'(?<!r)cc(?!u)', '11c', text_clean) # 如果是 ccu 或 rcc 就不轉，否則轉 11c
+    text_clean = text_clean.replace("cv", "11b")
+    text_clean = text_clean.replace("cbr", "11b")
+    text_clean = text_clean.replace("siri", "11b")
+    text_clean = text_clean.replace("cpu", "11b1") # CPU -> 十一B么 -> 11B01
+    text_clean = text_clean.replace("cp", "11b")
+    text_clean = text_clean.replace("11101", "11b1") # 11 101 -> 11B01
+    text_clean = text_clean.replace("哇", "wa")
+    text_clean = re.sub(r'(?<![a-z])qa', '9a', text_clean)
+    text_clean = re.sub(r'(?<![a-z])qb', '9b', text_clean)
+    text_clean = re.sub(r'(?<![a-z])qc', '9c', text_clean)
+    text_clean = re.sub(r'(?<![a-z])ba', '8a', text_clean)
+    text_clean = re.sub(r'(?<![a-z])bb', '8b', text_clean)
+    text_clean = re.sub(r'(?<![a-z])bc', '8c', text_clean)
+    text_clean = re.sub(r'(?<![a-z])sa', '10a', text_clean)
+    text_clean = re.sub(r'(?<![a-z])sb', '10b', text_clean)
+    text_clean = re.sub(r'(?<![a-z])sc', '10c', text_clean)
+    text_clean = re.sub(r'(?<![a-z])la', '6a', text_clean)
+    text_clean = re.sub(r'(?<![a-z])lb', '6b', text_clean)
+    text_clean = re.sub(r'(?<![a-z])lc', '6c', text_clean)
+    text_clean = re.sub(r'(?<![a-z])wa', '5a', text_clean)
+    text_clean = re.sub(r'(?<![a-z])wb', '5b', text_clean)
+    text_clean = re.sub(r'(?<![a-z])wc', '5c', text_clean)
+    text_clean = re.sub(r'[洞動棟零林鈴靈另]', '0', text_clean)
+    text_clean = re.sub(r'[么要一以已義]', '1', text_clean) # 移除了"意醫"，因為它們已配對到'e'
+    text_clean = re.sub(r'[兩二兒耳而]', '2', text_clean)
+    text_clean = re.sub(r'[散山三傘閃]', '3', text_clean)
+    text_clean = re.sub(r'[速事寺四死獅適]', '4', text_clean)
+    text_clean = re.sub(r'[無舞五屋物誤午武]', '5', text_clean)
+    text_clean = re.sub(r'[溜流六路綠陸錄]', '6', text_clean)
+    text_clean = re.sub(r'[拐漆七起氣妻期奇騎]', '7', text_clean)
+    text_clean = re.sub(r'[杯八把爸霸吧拔]', '8', text_clean)
+    text_clean = re.sub(r'[勾狗酒九久舊舅救就]', '9', text_clean)
+    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep跨了嗎吧擴大寶寶]'
+    text_clean = re.sub(fluff_pattern, '', text_clean)
+    text_clean = text_clean.replace("-", "").replace("_", "")
+    text_clean = re.sub(r'217(\d{2}s?)', r'17\1', text_clean)
+    # text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean) # 註解掉：保留原始的 0 以便顯示，例如 NBC01
+    candidates = text_clean.split("|")
+    return candidates[0].upper() if candidates else ""
+
 def is_fuzzy_bed_match(text, bed_no):
     """
     模糊比對床號，處理常見的語音辨識英文與數字誤差 (例如: 11B01 辨識為 11比01 或 十一逼洞么)
@@ -845,7 +972,7 @@ def is_fuzzy_bed_match(text, bed_no):
     
     # 針對英文字母後面的「0」進行防呆正規化 (例如 11B01 和 11B1 應該要能互通)
     # 加上 (?!\d) 條件：只有當數字是最後一位時才拔除 0，避免 7C01-2 (7c012) 被拔成 7c12 而與 7C12 衝突
-    text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean)
+    # text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean)
     bed_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', bed_clean)
     
     # 因為語音可能回傳多個候選結果 (例如 a|b|c)，需要切開來個別判斷
@@ -879,7 +1006,7 @@ def voice_dispatch():
     if not text:
         return jsonify({"status": "error", "message": "No text provided"}), 400
         
-    print(f"[{time.strftime('%H:%M:%S')}] 收到來電: {phone_number}, 語音對話: {text}")
+    print(f"[{time.strftime('%H:%M:%S')}] 收到來電: {phone_number}")
     
     # 進行對話分析，並 cross-reference 目前爬蟲抓到的病患清單
     matched_patients = []
@@ -953,7 +1080,6 @@ def voice_dispatch():
             "action": "voice_mentioned"
         })
         
-    log_voice_call(text, None, phone_number)
     socketio.emit('voice_logs_updated', get_voice_logs_list())
     return jsonify({
         "status": "success", 
