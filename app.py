@@ -757,7 +757,9 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = text_clean.replace("欸樓", "l")
     text_clean = text_clean.replace("欸母", "m")
     text_clean = text_clean.replace("艾斯", "s")
-
+    # 攔截特殊連字 (避免「欸死」被後續的「欸->a」與「死->s」拆成 as)
+    text_clean = text_clean.replace("欸死", "s").replace("耶死", "s")
+    
     # 針對台灣護理人員常見發音的語音誤判進行正規化 (英文字母單字)
     text_clean = re.sub(r'[欸誒黑ㄟ耶亞Aa]', 'a', text_clean)
     text_clean = re.sub(r'[比逼嗶幣必壁閉鼻筆避臂賓兵冰病餅並月坪瓶平Bb]', 'b', text_clean)
@@ -835,6 +837,11 @@ def is_fuzzy_bed_match(text, bed_no):
     # 清除床號中的連接號與底線，讓 7c01-2 與 7c012 能正確配對
     text_clean = text_clean.replace("-", "").replace("_", "")
     bed_clean = bed_clean.replace("-", "").replace("_", "")
+    
+    # 二大樓的特殊病房：護理師可能唸「二大樓十七洞五S」或「二一七洞五S」
+    # 經過過濾後會變成 217xxs，將其還原回 17xxs 以對應正確床號
+    text_clean = re.sub(r'217(\d{2}s?)', r'17\1', text_clean)
+    
     
     # 針對英文字母後面的「0」進行防呆正規化 (例如 11B01 和 11B1 應該要能互通)
     # 加上 (?!\d) 條件：只有當數字是最後一位時才拔除 0，避免 7C01-2 (7c012) 被拔成 7c12 而與 7C12 衝突
