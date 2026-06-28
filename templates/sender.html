@@ -1092,7 +1092,11 @@
             }
             data.forEach(line => {
                 const li = document.createElement('li');
-                li.innerText = line.trim();
+                let text = line.trim();
+                if (text.includes('[緊急]')) {
+                    text = text.replace('[緊急]', '<span style="background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-right: 4px; font-size: 0.85em;">緊急</span>');
+                }
+                li.innerHTML = text;
                 list.appendChild(li);
             });
             list.scrollTop = list.scrollHeight;

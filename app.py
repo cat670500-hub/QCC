@@ -401,17 +401,20 @@ def log_voice_call(text, matched_patient=None, phone_number="未知"):
     try:
         parsed_bed = parse_voice_to_bed(text)
         time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        is_urgent = "緊急" in text
+        urgent_tag = "[緊急] " if is_urgent else ""
+        
         if matched_patient:
             name = matched_patient.get('name', '未知')
             rec_no = matched_patient.get('record_no', '未知')
             bed = matched_patient.get('bed', '無')
-            log_line = f"[{time_str}] 來電: {phone_number} | 床號「{str(bed).upper()}」 | 已配對: {name} ({rec_no}) - 床號: {str(bed).upper()}\n"
+            log_line = f"[{time_str}] {urgent_tag}來電: {phone_number} | 床號「{str(bed).upper()}」 | 已配對: {name} ({rec_no}) - 床號: {str(bed).upper()}\n"
         else:
             import re
             # 如果未配對，且解析出來的床號包含中文等非英數字元（代表是一般對話），則不紀錄
             if not parsed_bed or not re.match(r'^[a-zA-Z0-9]+$', parsed_bed):
                 return
-            log_line = f"[{time_str}] 來電: {phone_number} | 床號「{parsed_bed}」 | 未配對床號\n"
+            log_line = f"[{time_str}] {urgent_tag}來電: {phone_number} | 床號「{parsed_bed}」 | 未配對床號\n"
         with open("voice_calls.log", "a", encoding="utf-8") as f:
             f.write(log_line)
     except Exception as e:
