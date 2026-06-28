@@ -256,10 +256,18 @@ class CallMonitorService : Service() {
                 updateNotification("通話進行中 - 正在監聽語音")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 addLog("[$timeStr] 電話已接通，啟動語音辨識...\n")
-                
-                // 必須開啟擴音，Android 系統才允許麥克風側錄通話對方的聲音
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-                audioManager.isSpeakerphoneOn = true
+                // 延遲開啟擴音，避免被系統原生的通話介面瞬間覆蓋
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        audioManager.isSpeakerphoneOn = true
+                        val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_VOICE_CALL)
+                        audioManager.setStreamVolume(android.media.AudioManager.STREAM_VOICE_CALL, maxVol, 0)
+                        val logMsg = "[$timeStr] 已強制開啟擴音並音量最大化以擷取對方語音\n"
+                        addLog(logMsg)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }, 1500)
                 
                 // 接通後立刻啟動語音辨識
                 startSpeechRecognition()
@@ -270,8 +278,11 @@ class CallMonitorService : Service() {
                 addLog("[$timeStr] 通話結束，停止辨識\n---\n")
                 
                 // 恢復一般音訊設定
-                audioManager.mode = AudioManager.MODE_NORMAL
-                audioManager.isSpeakerphoneOn = false
+                try {
+                    audioManager.isSpeakerphoneOn = false
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
                 
                 // 1. 停止語音辨識
                 stopSpeechRecognition()
