@@ -407,6 +407,10 @@ def log_voice_call(text, matched_patient=None, phone_number="未知"):
             bed = matched_patient.get('bed', '無')
             log_line = f"[{time_str}] 來電: {phone_number} | 床號「{str(bed).upper()}」 | 已配對: {name} ({rec_no}) - 床號: {str(bed).upper()}\n"
         else:
+            import re
+            # 如果未配對，且解析出來的床號包含中文等非英數字元（代表是一般對話），則不紀錄
+            if not parsed_bed or not re.match(r'^[a-zA-Z0-9]+$', parsed_bed):
+                return
             log_line = f"[{time_str}] 來電: {phone_number} | 床號「{parsed_bed}」 | 未配對床號\n"
         with open("voice_calls.log", "a", encoding="utf-8") as f:
             f.write(log_line)
