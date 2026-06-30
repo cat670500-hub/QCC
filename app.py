@@ -742,6 +742,16 @@ def parse_voice_to_bed(text):
     text_clean = text_clean.replace("十八", "18")
     text_clean = text_clean.replace("十九", "19")
     text_clean = re.sub(r'[十石]', '10', text_clean)
+    # 優先處理多字元與急診的常見語音誤判，避免被後續的單字替換破壞
+    text_clean = re.sub(r'[極吉級幾集即急][疹診整]', 'er', text_clean)
+    text_clean = text_clean.replace("急診", "er")
+    text_clean = text_clean.replace("呼吸照護中心", "rcc")
+    text_clean = text_clean.replace("呼吸照護", "rcc")
+    text_clean = text_clean.replace("阿西西", "rcc")
+    text_clean = text_clean.replace("啊西西", "rcc")
+    text_clean = text_clean.replace("阿cc", "rcc")
+    text_clean = text_clean.replace("啊cc", "rcc")
+
     text_clean = text_clean.replace("洞", "0").replace("么", "1").replace("兩", "2")
     
     # 僅保留最常見的床號英文字母同音字，避免將一般對話的中文亂翻成英文
@@ -772,8 +782,6 @@ def parse_voice_to_bed(text):
     text_clean = re.sub(r'[Yy]', 'y', text_clean)
     text_clean = re.sub(r'[Zz]', 'z', text_clean)
     
-    text_clean = text_clean.replace("急診", "er")
-    text_clean = text_clean.replace("呼吸照護", "rcc")
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
     text_clean = re.sub(r'(?<!r)cc(?!u)', '11c', text_clean) # 如果是 ccu 或 rcc 就不轉，否則轉 11c
