@@ -715,6 +715,10 @@ def parse_voice_to_bed(text):
     if not text:
         return ""
     text_clean = str(text).replace(" ", "").replace("　", "").lower()
+    
+    # 忽略護理師口語中的「二大樓」前綴，避免「二」被轉換為數字 2 干擾床號
+    text_clean = text_clean.replace("二大樓", "")
+    
     text_clean = text_clean.replace("二十一", "21")
     text_clean = text_clean.replace("二十二", "22")
     text_clean = text_clean.replace("二十三", "23")
@@ -819,7 +823,11 @@ def parse_voice_to_bed(text):
     text_clean = re.sub(r'[勾狗酒九久舊舅救就]', '9', text_clean)
     # 核心邏輯：在所有數字與特殊同音字轉換完畢後，將所有剩餘的非英數字元（包含中文對話、符號）全部刪除！
     text_clean = re.sub(r'[^a-zA-Z0-9]', '', text_clean)
-    text_clean = re.sub(r'217(\d{2}s?)', r'17\1', text_clean)
+    
+    # 處理二大樓的特殊病房：護理師可能唸「二一七洞五S」或「二洞七洞五S」
+    # 支援 207, 208, 210, 217, 218, 219 -> 轉為 07, 08, 10, 17, 18, 19
+    text_clean = re.sub(r'^2(07|08|10|17|18|19)(\d{2}[a-z]?)', r'\1\2', text_clean)
+    
     # text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean) # 註解掉：保留原始的 0 以便顯示，例如 NBC01
     candidates = text_clean.split("|")
     return candidates[0].upper() if candidates else ""
