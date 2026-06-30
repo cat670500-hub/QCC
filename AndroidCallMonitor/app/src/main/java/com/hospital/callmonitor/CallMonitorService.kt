@@ -265,12 +265,16 @@ class CallMonitorService : Service() {
                         val logMsg = "[$timeStr] 已強制開啟擴音並音量最大化以擷取對方語音\n"
                         addLog(logMsg)
                         
-                        // 等待擴音與音量設定完成後，再啟動語音辨識 (避免音訊通道切換導致麥克風中斷)
-                        startSpeechRecognition()
+                        // 等待硬體擴音切換完成後，再啟動語音辨識 (避免音訊通道切換的硬體中斷導致辨識器閃退)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            startSpeechRecognition()
+                        }, 500)
                     } catch (e: Exception) {
                         e.printStackTrace()
                         // 即使發生錯誤也嘗試啟動
-                        startSpeechRecognition()
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            startSpeechRecognition()
+                        }, 500)
                     }
                 }, 500)
             }
