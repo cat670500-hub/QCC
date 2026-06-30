@@ -264,13 +264,15 @@ class CallMonitorService : Service() {
                         audioManager.setStreamVolume(android.media.AudioManager.STREAM_VOICE_CALL, maxVol, 0)
                         val logMsg = "[$timeStr] 已強制開啟擴音並音量最大化以擷取對方語音\n"
                         addLog(logMsg)
+                        
+                        // 等待擴音與音量設定完成後，再啟動語音辨識 (避免音訊通道切換導致麥克風中斷)
+                        startSpeechRecognition()
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        // 即使發生錯誤也嘗試啟動
+                        startSpeechRecognition()
                     }
                 }, 1500)
-                
-                // 接通後立刻啟動語音辨識
-                startSpeechRecognition()
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
