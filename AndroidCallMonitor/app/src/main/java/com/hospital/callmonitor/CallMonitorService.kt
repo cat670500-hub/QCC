@@ -272,7 +272,7 @@ class CallMonitorService : Service() {
                         // 即使發生錯誤也嘗試啟動
                         startSpeechRecognition()
                     }
-                }, 1500)
+                }, 500)
             }
             "IDLE" -> {
                 updateNotification("通話結束 - 語音監聽暫停")
