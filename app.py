@@ -774,9 +774,6 @@ def parse_voice_to_bed(text):
     
     text_clean = text_clean.replace("急診", "er")
     text_clean = text_clean.replace("呼吸照護", "rcc")
-    
-    # 核心邏輯：將所有非英數字元（包含所有剩餘的中文對話）全部刪除！只保留數字與英文字母！
-    text_clean = re.sub(r'[^a-zA-Z0-9]', '', text_clean)
     text_clean = text_clean.replace("cb", "11b")
     text_clean = text_clean.replace("ca", "11a")
     text_clean = re.sub(r'(?<!r)cc(?!u)', '11c', text_clean) # 如果是 ccu 或 rcc 就不轉，否則轉 11c
@@ -812,9 +809,8 @@ def parse_voice_to_bed(text):
     text_clean = re.sub(r'[拐漆七起氣妻期奇騎]', '7', text_clean)
     text_clean = re.sub(r'[杯八把爸霸吧拔]', '8', text_clean)
     text_clean = re.sub(r'[勾狗酒九久舊舅救就]', '9', text_clean)
-    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep跨了嗎吧擴大寶寶]'
-    text_clean = re.sub(fluff_pattern, '', text_clean)
-    text_clean = text_clean.replace("-", "").replace("_", "")
+    # 核心邏輯：在所有數字與特殊同音字轉換完畢後，將所有剩餘的非英數字元（包含中文對話、符號）全部刪除！
+    text_clean = re.sub(r'[^a-zA-Z0-9]', '', text_clean)
     text_clean = re.sub(r'217(\d{2}s?)', r'17\1', text_clean)
     # text_clean = re.sub(r'([a-z])0+(\d)(?!\d)', r'\1\2', text_clean) # 註解掉：保留原始的 0 以便顯示，例如 NBC01
     candidates = text_clean.split("|")
