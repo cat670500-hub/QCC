@@ -411,10 +411,23 @@ def log_voice_call(text, matched_patient=None, phone_number="未知"):
             log_line = f"[{time_str}] {urgent_tag}來電: {phone_number} | 床號「{str(bed).upper()}」 | 已配對: {name} ({rec_no}) - 床號: {str(bed).upper()}\n"
         else:
             import re
-            # 如果未配對，且解析出來的床號包含中文等非英數字元（代表是一般對話），則不紀錄
-            if not parsed_bed or not re.match(r'^[a-zA-Z0-9]+$', parsed_bed):
+            original_text = str(text)
+            
+            # 過濾 1: 原始語音太長（大於 8 個字）且不包含明確指令關鍵字，視為一般閒聊，不紀錄
+            is_long_conversation = len(original_text) > 8
+            has_keywords = any(kw in original_text for kw in ["床", "叫", "車", "傳送", "推", "送", "病患", "緊急", "取消", "幫我"])
+            if is_long_conversation and not has_keywords:
                 return
-            log_line = f"[{time_str}] {urgent_tag}來電: {phone_number} | 床號「{parsed_bed}」 | 未配對床號\n"
+                
+            # 過濾 2: 轉換後的床號太短 (例如雜音變成 "11" 或 "cg")，不紀錄
+            if not parsed_bed or len(parsed_bed) < 3:
+                return
+                
+            # 過濾 3: 轉換後的床號包含非英數字元
+            if not re.match(r'^[a-zA-Z0-9]+$', parsed_bed):
+                return
+                
+            log_line = f"[{time_str}] {urgent_tag}來電: {phone_number} | 床號「{parsed_bed.upper()}」 | 未配對床號\n"
         with open("voice_calls.log", "a", encoding="utf-8") as f:
             f.write(log_line)
     except Exception as e:
