@@ -1034,6 +1034,30 @@ def voice_dispatch():
             if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and is_fuzzy_bed_match(text, p_bed):
                 matched_patients.append(p)
                 
+        # 3.5 如果嚴格語音比對失敗，啟用「編輯距離 (Levenshtein)」極致模糊比對來提升準確度！
+        if not matched_patients:
+            import difflib
+            parsed_bed = parse_voice_to_bed(text).lower()
+            if len(parsed_bed) >= 3:
+                active_beds = {}
+                for p in patients_data:
+                    p_bed = str(p.get('bed', '')).strip()
+                    if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2:
+                        bed_clean = p_bed.replace(" ", "").replace("-", "").replace("_", "").lower()
+                        if "急診" in bed_clean:
+                            bed_clean = bed_clean.replace("急診", "er")
+                        if "rcc" in bed_clean or "呼吸" in bed_clean:
+                            bed_clean = "rcc"
+                        active_beds[bed_clean] = p
+                
+                # 尋找與 parsed_bed 最相近的有效床號 (容錯率 0.75，大約允許錯 1 個字)
+                if active_beds:
+                    matches = difflib.get_close_matches(parsed_bed, active_beds.keys(), n=1, cutoff=0.75)
+                    if matches:
+                        closest_bed = matches[0]
+                        matched_patients.append(active_beds[closest_bed])
+                        print(f"[智慧配對] '{parsed_bed}' 查無此床，但與 '{closest_bed}' 相似度極高，自動配對成功！")
+                
     # 永遠紀錄語音歷程，方便除錯與追蹤 (取第一筆代表)
     first_match = matched_patients[0] if matched_patients else None
     log_voice_call(text, first_match, phone_number)
