@@ -977,7 +977,9 @@ def is_fuzzy_bed_match(text, bed_no):
     text_clean = re.sub(r'[勾狗酒九久舊舅救就]', '9', text_clean)
     
     # 移除常見的口語贅字與奇怪的辨識結果 (如「床頭板」被聽成「臭豆腐」)
-    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆prosleep跨了嗎吧擴大寶寶]'
+    text_clean = text_clean.replace('prosleep', '')
+    bed_clean = bed_clean.replace('prosleep', '')
+    fluff_pattern = r'[樓床房號室區的那個這有在幫我照一下位病患臭豆腐蘿蔔老婆豆跨了嗎吧擴大寶寶]'
     text_clean = re.sub(fluff_pattern, '', text_clean)
     bed_clean = re.sub(fluff_pattern, '', bed_clean)
     
