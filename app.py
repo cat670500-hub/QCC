@@ -1028,30 +1028,37 @@ def voice_dispatch():
     if not text:
         return jsonify({"status": "error", "message": "No text provided"}), 400
         
-    print(f"[{time.strftime('%H:%M:%S')}] 收到來電: {phone_number}")
-    
     # 進行對話分析，並 cross-reference 目前爬蟲抓到的病患清單
     matched_patients = []
+    
+    # 根據需求：急診不用做配對，因此我們在語音配對前，先將急診病患排除
+    active_patients = []
+    for p in patients_data:
+        p_source = str(p.get('source', '')).strip()
+        p_bed = str(p.get('bed', '')).strip().lower()
+        if p_source == '急診' or 'er' in p_bed or '急診' in p_bed:
+            continue
+        active_patients.append(p)
     
     # 1. 先用病歷號比對 (6-10 位數字)
     record_numbers = re.findall(r'\d{6,10}', text)
     if record_numbers:
         for r_no in record_numbers:
             r_no_clean = str(r_no).strip()
-            for p in patients_data:
+            for p in active_patients:
                 if str(p.get('record_no', '')).strip() == r_no_clean:
                     matched_patients.append(p)
                     
     # 2. 如果病歷號沒配對到，用病患姓名比對
     if not matched_patients:
-        for p in patients_data:
+        for p in active_patients:
             p_name = str(p.get('name', '')).strip()
             if p_name and is_fuzzy_name_match(text, p_name):
                 matched_patients.append(p)
                 
     # 3. 如果姓名也沒配對到，用床號比對
     if not matched_patients:
-        for p in patients_data:
+        for p in active_patients:
             p_bed = str(p.get('bed', '')).strip()
             if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2 and is_fuzzy_bed_match(text, p_bed):
                 matched_patients.append(p)
@@ -1062,7 +1069,7 @@ def voice_dispatch():
             parsed_bed = parse_voice_to_bed(text).lower()
             if len(parsed_bed) >= 3:
                 active_beds = {}
-                for p in patients_data:
+                for p in active_patients:
                     p_bed = str(p.get('bed', '')).strip()
                     if p_bed and p_bed != "(無病房資料)" and len(p_bed) >= 2:
                         bed_clean = p_bed.replace(" ", "").replace("-", "").replace("_", "").lower()
