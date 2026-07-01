@@ -842,6 +842,10 @@ def is_fuzzy_bed_match(text, bed_no):
     # 去除所有空白與轉小寫
     import re
     text_clean = str(text).replace(" ", "").replace("　", "").lower()
+    
+    # 忽略護理師口語中的「二大樓」前綴，避免「二」被轉換為數字 2 干擾床號
+    text_clean = text_clean.replace("二大樓", "")
+    
     bed_clean = str(bed_no).replace(" ", "").replace("　", "").lower()
     
     # 處理雙位數特例 (必須在單一數字轉換前執行)
@@ -983,8 +987,8 @@ def is_fuzzy_bed_match(text, bed_no):
     
     # 二大樓的特殊病房：護理師可能唸「二大樓十七洞五S」或「二一七洞五S」
     # 經過過濾後會變成 217xxs，將其還原回 17xxs 以對應正確床號
-    text_clean = re.sub(r'217(\d{2}s?)', r'17\1', text_clean)
-    
+    # 支援 207, 208, 210, 217, 218, 219 -> 轉為 07, 08, 10, 17, 18, 19
+    text_clean = re.sub(r'^2(07|08|10|17|18|19)(\d{2}[a-z]?)', r'\1\2', text_clean)
     
     # 針對英文字母後面的「0」進行防呆正規化 (例如 11B01 和 11B1 應該要能互通)
     # 加上 (?!\d) 條件：只有當數字是最後一位時才拔除 0，避免 7C01-2 (7c012) 被拔成 7c12 而與 7C12 衝突
