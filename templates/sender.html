@@ -22,6 +22,16 @@
                 🔗 其它單位連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; font-weight: 700; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-size: 0.8rem; color: #10b981; font-weight: bold; display: flex; align-items: center; gap: 4px;" title="調整通報語音速度">
+                    🗣️語速 <input type="range" id="speechRateSlider" min="0.3" max="1.5" step="0.1" value="0.6" list="speechRateTicks" style="width: 60px; accent-color: #10b981;" oninput="document.getElementById('speechRateVal').innerText = Number(this.value).toFixed(1) + 'x'" onchange="updateSpeechRate(this.value)">
+                    <span id="speechRateVal" style="font-size: 0.75rem; color: #059669; width: 28px;">0.6x</span>
+                    <datalist id="speechRateTicks">
+                        <option value="0.3"></option>
+                        <option value="0.6"></option>
+                        <option value="1.0"></option>
+                        <option value="1.5"></option>
+                    </datalist>
+                </label>
                 <span id="speechStatus" style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
                 {% if session.operator_account %}
                     <span style="font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 10px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
@@ -169,6 +179,26 @@
         let currentPatients = {{ patients | tojson }} || [];
         const checkInErrors = {};
         let isSpeechEnabled = true; // 預設就緒
+        window.speechRate = parseFloat(localStorage.getItem('speechRate')) || 0.6;
+
+        function updateSpeechRate(rate) {
+            window.speechRate = parseFloat(rate);
+            localStorage.setItem('speechRate', window.speechRate);
+            if ('speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance('語速調整測試');
+                u.rate = window.speechRate;
+                window.speechSynthesis.speak(u);
+            }
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const slider = document.getElementById('speechRateSlider');
+            if (slider) {
+                slider.value = window.speechRate;
+                const valSpan = document.getElementById('speechRateVal');
+                if (valSpan) valSpan.innerText = Number(window.speechRate).toFixed(1) + 'x';
+            }
+        });
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
         if ('speechSynthesis' in window) {
@@ -310,7 +340,7 @@
             cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(cleanedText);
-            utterance.rate = 0.6;
+            utterance.rate = window.speechRate;
             
             utterance.onend = () => {
                 cleanUp();
@@ -344,7 +374,7 @@
                 cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
-                retryUtterance.rate = 0.6;
+                retryUtterance.rate = window.speechRate;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;

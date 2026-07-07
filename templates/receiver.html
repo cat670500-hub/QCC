@@ -16,17 +16,21 @@
                 🔗 連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a>
             </span>
             <div style="display: flex; gap: 6px; align-items: center;">
+                <label style="font-size: 0.75rem; color: #10b981; font-weight: bold; display: flex; align-items: center; gap: 4px;" title="調整通報語音速度">
+                    🗣️語速 <input type="range" id="speechRateSlider" min="0.3" max="1.5" step="0.1" value="0.6" list="speechRateTicks" style="width: 50px; accent-color: #10b981;" oninput="document.getElementById('speechRateVal').innerText = Number(this.value).toFixed(1) + 'x'" onchange="updateSpeechRate(this.value)">
+                    <span id="speechRateVal" style="font-size: 0.7rem; color: #059669; width: 26px;">0.6x</span>
+                    <datalist id="speechRateTicks">
+                        <option value="0.3"></option>
+                        <option value="0.6"></option>
+                        <option value="1.0"></option>
+                        <option value="1.5"></option>
+                    </datalist>
+                </label>
                 <span id="speechStatus" style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
                 {% if session.operator_account %}
                     <span style="font-size: 0.75rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 3px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 操作員: {{ session.operator_account }}</span>
                 {% endif %}
             </div>
-        </div>
-
-        <!-- 語音播報鎖定警告 -->
-        <div id="speechLockBanner" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; font-size: 0.85rem; font-weight: bold; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-            <span>⚠️ 瀏覽器語音播放目前被鎖定！請點擊頁面任意處，或點按右側解鎖，以啟用自動語音播報。</span>
-            <button onclick="unlockSpeech()" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; font-weight: bold; cursor: pointer; white-space: nowrap;">點選解鎖</button>
         </div>
 
         <!-- 接收病房設定與語音選擇 -->
@@ -68,6 +72,26 @@
         const socket = io();
         let activeVoiceMentionPatient = null;
         let isSpeechEnabled = true; // 預設就緒
+        window.speechRate = parseFloat(localStorage.getItem('speechRate')) || 0.6;
+
+        function updateSpeechRate(rate) {
+            window.speechRate = parseFloat(rate);
+            localStorage.setItem('speechRate', window.speechRate);
+            if ('speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance('語速調整測試');
+                u.rate = window.speechRate;
+                window.speechSynthesis.speak(u);
+            }
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const slider = document.getElementById('speechRateSlider');
+            if (slider) {
+                slider.value = window.speechRate;
+                const valSpan = document.getElementById('speechRateVal');
+                if (valSpan) valSpan.innerText = Number(window.speechRate).toFixed(1) + 'x';
+            }
+        });
         let googleVoiceFailed = false; // 記錄 Google 語音是否失效，失效則自動直接使用本地語音，省去超時等待
         let activeSpeechTimeout = null; // 用於控制第二次播報的間隔時間
         let activeAnnouncementId = 0; // 用於避免新舊播報排程衝突的唯一識別
@@ -97,11 +121,10 @@
             defaultOption.value = '';
             voiceSelect.appendChild(defaultOption);
 
-            // 優先列出中文語音，其他放後面
+            // 只列出中文語音
             const zhVoices = voices.filter(v => v.lang.toLowerCase().startsWith('zh'));
-            const otherVoices = voices.filter(v => !v.lang.toLowerCase().startsWith('zh'));
 
-            [...zhVoices, ...otherVoices].forEach(voice => {
+            zhVoices.forEach(voice => {
                 const option = document.createElement('option');
                 option.textContent = `${voice.name} (${voice.lang})`;
                 option.value = voice.voiceURI;
@@ -134,16 +157,12 @@
 
         function unlockSpeech() {
             enableSpeechSession();
-            const banner = document.getElementById('speechLockBanner');
-            if (banner) banner.style.display = 'none';
             speakWithFallback("自動語音播報功能已啟用");
         }
 
-        // 監聽第一次點擊自動解鎖並隱藏警告條
+        // 監聽第一次點擊自動解鎖
         document.addEventListener('click', () => {
             enableSpeechSession();
-            const banner = document.getElementById('speechLockBanner');
-            if (banner) banner.style.display = 'none';
         }, { once: true });
 
         // 使用 Web Audio API 播放高級警示聲響 (無須任何外部音訊檔)
@@ -242,7 +261,7 @@
             targetText = targetText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(targetText);
-            utterance.rate = 0.6;
+            utterance.rate = window.speechRate;
             
             let timeoutId = null;
             let started = false;
@@ -273,7 +292,7 @@
                 localText = localText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 localText = localText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(localText);
-                retryUtterance.rate = 0.6;
+                retryUtterance.rate = window.speechRate;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;

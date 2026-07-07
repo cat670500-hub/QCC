@@ -491,7 +491,16 @@
             <!-- 系統連線網址 -->
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; text-align: left; color: #10b981; font-weight: bold;">
                 <span>🔗 系統連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a></span>
-                <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+                    <label style="font-size: 0.7rem; color: #10b981; font-weight: bold; display: flex; align-items: center; gap: 4px;" title="調整通報語音速度">
+                        🗣️ <input type="range" id="speechRateSlider" min="0.3" max="1.5" step="0.1" value="0.6" list="speechRateTicks" style="width: 45px; accent-color: #10b981;" oninput="document.getElementById('speechRateVal').innerText = Number(this.value).toFixed(1) + 'x'" onchange="updateSpeechRate(this.value)">
+                        <span id="speechRateVal" style="font-size: 0.65rem; color: #059669; width: 22px;">0.6x</span>
+                        <datalist id="speechRateTicks">
+                            <option value="0.3"></option>
+                            <option value="0.6"></option>
+                            <option value="1.0"></option>
+                            <option value="1.5"></option>
+                        </datalist>
+                    </label>
                     <span id="speechStatus" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap; cursor: pointer;" onclick="testSpeech()">🔊 語音已就緒</span>
                     {% if session.operator_account %}
                         <span style="font-size: 0.7rem; background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 2px 6px; border-radius: 20px; font-weight: bold; white-space: nowrap;">👤 {{ session.operator_account }}</span>
@@ -549,6 +558,26 @@
         const socket = io();
         let activePatients = [];
         let isSpeechEnabled = true; // 預設就緒
+        window.speechRate = parseFloat(localStorage.getItem('speechRate')) || 0.6;
+
+        function updateSpeechRate(rate) {
+            window.speechRate = parseFloat(rate);
+            localStorage.setItem('speechRate', window.speechRate);
+            if ('speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance('語速調整測試');
+                u.rate = window.speechRate;
+                window.speechSynthesis.speak(u);
+            }
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const slider = document.getElementById('speechRateSlider');
+            if (slider) {
+                slider.value = window.speechRate;
+                const valSpan = document.getElementById('speechRateVal');
+                if (valSpan) valSpan.innerText = Number(window.speechRate).toFixed(1) + 'x';
+            }
+        });
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
         function populateVoiceList() {
@@ -561,7 +590,8 @@
             const selectedValue = voiceSelect.value;
             
             voiceSelect.innerHTML = '<option value="">(系統自動選擇最佳語音)</option>';
-            voices.forEach(voice => {
+            const zhVoices = voices.filter(v => v.lang.toLowerCase().startsWith('zh'));
+            zhVoices.forEach(voice => {
                 const option = document.createElement('option');
                 option.textContent = `${voice.name} (${voice.lang})`;
                 option.value = voice.voiceURI;
@@ -1155,7 +1185,7 @@
             cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(cleanedText);
-            utterance.rate = 0.6;
+            utterance.rate = window.speechRate;
             utterance.pitch = 1.0;
             
             utterance.onend = () => {
@@ -1202,7 +1232,7 @@
                 cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
-                retryUtterance.rate = 0.6;
+                retryUtterance.rate = window.speechRate;
                 retryUtterance.pitch = 1.0;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
@@ -1434,6 +1464,7 @@
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(`來電提到床號 ${p.bed || '無床號'}，已為您標示。`);
                 utterance.lang = 'zh-TW';
+                utterance.rate = window.speechRate || 0.6;
                 window.speechSynthesis.speak(utterance);
             }
         });
