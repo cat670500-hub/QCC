@@ -10,7 +10,7 @@ python -m pip install --disable-pip-version-check pyinstaller
 echo.
 echo [2/3] 開始打包主程式與 Chromium 瀏覽器...
 echo (這會把 Playwright 瀏覽器一起打包進去，檔案會有點大，請耐心等候)
-python -m PyInstaller --noconfirm --onedir --name "Portable派遣系統" --add-data "templates;templates" --add-data "static;static" --add-data "%LOCALAPPDATA%\ms-playwright;ms-playwright" app.py
+python -m PyInstaller --noconfirm --onedir --name "Portable派遣系統" --hidden-import engineio.async_drivers.threading --add-data "templates;templates" --add-data "static;static" --add-data "%LOCALAPPDATA%\ms-playwright;ms-playwright" app.py
 
 echo.
 echo ===================================================

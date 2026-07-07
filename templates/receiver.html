@@ -29,11 +29,15 @@
             <button onclick="unlockSpeech()" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; font-weight: bold; cursor: pointer; white-space: nowrap;">點選解鎖</button>
         </div>
 
-        <!-- 接收病房設定 -->
+        <!-- 接收病房設定與語音選擇 -->
         <div style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; text-align: left; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1;">
                 <label for="wardFilter" style="font-size: 0.9rem; font-weight: bold; color: #475569; white-space: nowrap;">⚙️ 接收病房設定：</label>
                 <input type="text" id="wardFilter" placeholder="例如：11B, 6C (空白表示接收全部)" style="flex-grow: 1; max-width: 400px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none; font-size: 0.9rem;" oninput="saveWardFilter()">
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="voiceSelect" style="font-size: 0.9rem; font-weight: bold; color: #475569; white-space: nowrap;">🗣️ 語音選擇：</label>
+                <select id="voiceSelect" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); outline: none; font-size: 0.9rem; max-width: 250px; background: white;" onchange="saveVoiceSelection()"></select>
             </div>
         </div>
 
@@ -73,7 +77,50 @@
             window.speechSynthesis.getVoices();
             window.speechSynthesis.onvoiceschanged = () => {
                 window.speechSynthesis.getVoices();
+                populateVoiceList();
             };
+            setTimeout(populateVoiceList, 500); // 確保初始載入
+        }
+
+        function populateVoiceList() {
+            if (!('speechSynthesis' in window)) return;
+            const voices = window.speechSynthesis.getVoices();
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (!voiceSelect || voices.length === 0) return;
+            
+            const selectedVoiceURI = localStorage.getItem('selectedVoiceURI');
+            voiceSelect.innerHTML = '';
+            
+            // 加入預設選項 (自動選擇)
+            const defaultOption = document.createElement('option');
+            defaultOption.textContent = '自動選擇 (優先 Google 中文)';
+            defaultOption.value = '';
+            voiceSelect.appendChild(defaultOption);
+
+            // 優先列出中文語音，其他放後面
+            const zhVoices = voices.filter(v => v.lang.toLowerCase().startsWith('zh'));
+            const otherVoices = voices.filter(v => !v.lang.toLowerCase().startsWith('zh'));
+
+            [...zhVoices, ...otherVoices].forEach(voice => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = voice.voiceURI;
+                if (voice.voiceURI === selectedVoiceURI) {
+                    option.selected = true;
+                }
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        function saveVoiceSelection() {
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (voiceSelect) {
+                localStorage.setItem('selectedVoiceURI', voiceSelect.value);
+                // 測試播放新選擇的語音
+                if (voiceSelect.value !== '') {
+                    speakWithFallback("已套用新語音設定");
+                }
+            }
         }
 
         // 啟用語音（由使用者點擊或操作觸發解鎖瀏覽器限制）
@@ -195,7 +242,7 @@
             targetText = targetText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(targetText);
-            utterance.rate = 0.75;
+            utterance.rate = 0.6;
             
             let timeoutId = null;
             let started = false;
@@ -226,7 +273,7 @@
                 localText = localText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 localText = localText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(localText);
-                retryUtterance.rate = 0.75;
+                retryUtterance.rate = 0.6;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;
@@ -312,6 +359,13 @@
             if (!('speechSynthesis' in window)) return null;
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return null;
+            
+            // 0. 優先檢查使用者是否手動選擇了特定語音
+            const selectedVoiceURI = localStorage.getItem('selectedVoiceURI');
+            if (selectedVoiceURI) {
+                const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
+                if (selectedVoice) return selectedVoice;
+            }
             
             // 1. 絕對優先尋找包含 "google" 的中文語音 (例如 Google 國語)
             if (!googleVoiceFailed) {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -91,19 +92,33 @@
     <Button
         android:id="@+id/btnToggle"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="60dp"
+        android:layout_marginTop="24dp"
+        android:backgroundTint="#0ea5e9"
         android:text="啟用來電自動語音派遣"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:cornerRadius="12dp" />
+
+    <Button
+        android:id="@+id/btnTestSpeech"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginTop="12dp"
+        android:backgroundTint="#f59e0b"
+        android:text="測試語音辨識 (免撥號)"
+        android:textColor="#ffffff"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:textColor="#ffffff"
-        android:backgroundTint="#0ea5e9"
-        android:layout_marginBottom="24dp" />
+        app:cornerRadius="12dp" />
 
     <!-- 辨識歷程記錄 -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="語音辨識歷程記錄"
+        android:layout_marginTop="32dp"
+        android:text="近期日誌紀錄"
         android:textColor="#94a3b8"
         android:textSize="14sp"
         android:layout_gravity="start"

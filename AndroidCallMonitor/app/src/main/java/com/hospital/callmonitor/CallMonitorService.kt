@@ -232,9 +232,16 @@ class CallMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val initialCallState = intent?.getStringExtra("call_state") ?: "IDLE"
-        if (initialCallState != "IDLE") {
-            handleCallState(initialCallState, intent?.getStringExtra("phone_number"))
+        val callState = intent?.getStringExtra("call_state")
+        val phoneNumber = intent?.getStringExtra("phone_number")
+        if (callState != null) {
+            handleCallState(callState, phoneNumber)
+        }
+        
+        if (intent?.getBooleanExtra("action_test", false) == true) {
+            val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            addLog("[$timeStr] 🔔 使用者手動觸發測試語音辨識...\n")
+            startSpeechRecognition()
         }
         return START_STICKY
     }
@@ -255,26 +262,30 @@ class CallMonitorService : Service() {
             "OFFHOOK" -> {
                 updateNotification("通話進行中 - 正在監聽語音")
                 val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                addLog("[$timeStr] 電話已接通，啟動語音辨識...\n")
+                addLog("[$timeStr] 電話已接通，嘗試繞過系統限制啟動語音辨識...\n")
                 // 延遲開啟擴音，避免被系統原生的通話介面瞬間覆蓋
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     try {
+                        // 【欺騙系統】將音訊模式改為 VoIP 模式，試圖騙過 Google App 的防竊聽機制
+                        audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
                         audioManager.isSpeakerphoneOn = true
                         val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_VOICE_CALL)
                         audioManager.setStreamVolume(android.media.AudioManager.STREAM_VOICE_CALL, maxVol, 0)
-                        val logMsg = "[$timeStr] 已強制開啟擴音並音量最大化以擷取對方語音\n"
+                        val logMsg = "[$timeStr] 已強制切換音訊模式與擴音\n"
                         addLog(logMsg)
                         
+                        shouldLoopRecognition = true
                         // 等待硬體擴音切換完成後，再啟動語音辨識 (避免音訊通道切換的硬體中斷導致辨識器閃退)
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             startSpeechRecognition()
-                        }, 500)
+                        }, 1000)
                     } catch (e: Exception) {
                         e.printStackTrace()
                         // 即使發生錯誤也嘗試啟動
+                        shouldLoopRecognition = true
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             startSpeechRecognition()
-                        }, 500)
+                        }, 1000)
                     }
                 }, 500)
             }
@@ -285,6 +296,7 @@ class CallMonitorService : Service() {
                 
                 // 恢復一般音訊設定
                 try {
+                    audioManager.mode = android.media.AudioManager.MODE_NORMAL
                     audioManager.isSpeakerphoneOn = false
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -297,8 +309,14 @@ class CallMonitorService : Service() {
     }
 
     // 啟動語音辨識
-    private fun startSpeechRecognition() {
+    private var shouldLoopRecognition = false
+
+    private fun startSpeechRecognition(isTest: Boolean = false) {
         if (isRecognizerActive) return
+        
+        if (isTest) {
+            shouldLoopRecognition = false
+        }
 
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
@@ -349,9 +367,11 @@ class CallMonitorService : Service() {
                         
                         isRecognizerActive = false
                         // 失敗後，如果仍在監聽狀態，快速延遲重試
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            startSpeechRecognition()
-                        }, 500)
+                        if (shouldLoopRecognition) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                if (shouldLoopRecognition) startSpeechRecognition()
+                            }, 500)
+                        }
                     }
 
                     override fun onResults(results: Bundle?) {
@@ -374,7 +394,9 @@ class CallMonitorService : Service() {
                         }
 
                         // 持續監聽
-                        startSpeechRecognition()
+                        if (shouldLoopRecognition) {
+                            startSpeechRecognition()
+                        }
                     }
 
                     override fun onPartialResults(partialResults: Bundle?) {}
@@ -390,6 +412,7 @@ class CallMonitorService : Service() {
     }
 
     private fun stopSpeechRecognition() {
+        shouldLoopRecognition = false
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
                 speechRecognizer?.stopListening()

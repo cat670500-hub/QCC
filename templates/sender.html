@@ -310,7 +310,7 @@
             cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(cleanedText);
-            utterance.rate = 0.75;
+            utterance.rate = 0.6;
             
             utterance.onend = () => {
                 cleanUp();
@@ -344,7 +344,7 @@
                 cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
-                retryUtterance.rate = 0.75;
+                retryUtterance.rate = 0.6;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;
                     retryUtterance.lang = localVoice.lang;

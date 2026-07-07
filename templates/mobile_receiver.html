@@ -479,6 +479,15 @@
             <span id="settingsCollapseArrow" style="font-size: 0.8rem; color: var(--text-muted); transition: transform 0.3s; display: inline-block;">▼</span>
         </div>
         <div id="settingsCollapseContent" style="display: none; padding: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); flex-direction: column; gap: 15px;">
+            <!-- 語音播報聲音選擇 -->
+            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; text-align: left;">
+                <label for="voiceSelect" style="color: #60a5fa; font-weight: bold; font-size: 0.85rem;">🗣️ 語音播報聲音選擇</label>
+                <select id="voiceSelect" onchange="testSpeech()" style="background: rgba(15, 23, 42, 0.8); color: #f8fafc; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 6px; width: 100%; font-family: 'Outfit', sans-serif;">
+                    <option value="">(系統自動選擇最佳語音)</option>
+                </select>
+                <span style="color: #94a3b8; font-size: 0.75rem;">選擇後會自動播放測試音效。選項會依據您的設備而有所不同。</span>
+            </div>
+
             <!-- 系統連線網址 -->
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 6px; text-align: left; color: #10b981; font-weight: bold;">
                 <span>🔗 系統連線網址：<a href="{{ protocol }}://{{ host_ip }}:{{ port }}/" target="_blank" style="color: #34d399; text-decoration: underline; word-break: break-all;">{{ protocol }}://{{ host_ip }}:{{ port }}/</a></span>
@@ -542,10 +551,40 @@
         let isSpeechEnabled = true; // 預設就緒
 
         // 預先載入語音清單 (解決部分瀏覽器 getVoices() 非同步載入問題)
+        function populateVoiceList() {
+            if (!('speechSynthesis' in window)) return;
+            const voices = window.speechSynthesis.getVoices();
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (!voiceSelect) return;
+            
+            // 保留目前選擇的值
+            const selectedValue = voiceSelect.value;
+            
+            voiceSelect.innerHTML = '<option value="">(系統自動選擇最佳語音)</option>';
+            voices.forEach(voice => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = voice.voiceURI;
+                if (voice.voiceURI === selectedValue) {
+                    option.selected = true;
+                }
+                voiceSelect.appendChild(option);
+            });
+        }
+
         if ('speechSynthesis' in window) {
             window.speechSynthesis.getVoices();
+            setTimeout(populateVoiceList, 500); // 確保選單初始載入
             window.speechSynthesis.onvoiceschanged = () => {
                 window.speechSynthesis.getVoices();
+                populateVoiceList();
+                
+                // 載入上次的選擇
+                const savedURI = localStorage.getItem('mobileSelectedVoiceURI');
+                const voiceSelect = document.getElementById('voiceSelect');
+                if (savedURI && voiceSelect) {
+                    voiceSelect.value = savedURI;
+                }
             };
         }
 
@@ -1028,6 +1067,27 @@
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return null;
             
+            // 0. 檢查使用者手動選擇的語音
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (voiceSelect && voiceSelect.value !== '') {
+                const selectedVoiceURI = voiceSelect.value;
+                const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
+                if (selectedVoice) {
+                    localStorage.setItem('mobileSelectedVoiceURI', selectedVoiceURI);
+                    return selectedVoice;
+                }
+            } else {
+                // 如果沒選，試著讀取之前的設定
+                const savedURI = localStorage.getItem('mobileSelectedVoiceURI');
+                if (savedURI && voiceSelect && voiceSelect.options.length > 1) { // 確保選單已載入
+                    const savedVoice = voices.find(v => v.voiceURI === savedURI);
+                    if (savedVoice) {
+                        voiceSelect.value = savedURI;
+                        return savedVoice;
+                    }
+                }
+            }
+            
             // 1. 絕對優先尋找包含 "google" 的中文語音 (例如 Google 國語)
             const googleVoice = voices.find(v => {
                 const name = v.name.toLowerCase();
@@ -1095,7 +1155,7 @@
             cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
             
             const utterance = new SpeechSynthesisUtterance(cleanedText);
-            utterance.rate = 0.75;
+            utterance.rate = 0.6;
             utterance.pitch = 1.0;
             
             utterance.onend = () => {
@@ -1142,7 +1202,7 @@
                 cleanedText = cleanedText.replace(/([a-zA-Z0-9]+)/g, ' $1 ');
                 cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
                 const retryUtterance = new SpeechSynthesisUtterance(cleanedText);
-                retryUtterance.rate = 0.75;
+                retryUtterance.rate = 0.6;
                 retryUtterance.pitch = 1.0;
                 if (localVoice) {
                     retryUtterance.voice = localVoice;

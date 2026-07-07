@@ -21,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var txtStatus: TextView
     private lateinit var editIpAddress: EditText
     private lateinit var btnToggle: Button
+    private lateinit var btnTestSpeech: Button
     private lateinit var txtLogHistory: TextView
     
     private var isServiceRunning = false
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity() {
         txtStatus = findViewById(R.id.txtStatus)
         editIpAddress = findViewById(R.id.editIpAddress)
         btnToggle = findViewById(R.id.btnToggle)
+        btnTestSpeech = findViewById(R.id.btnTestSpeech)
         txtLogHistory = findViewById(R.id.txtLogHistory)
 
         // 讀取先前儲存的 Flask IP
@@ -48,6 +50,22 @@ class MainActivity : AppCompatActivity() {
                 stopMonitorService()
             } else {
                 startMonitorService()
+            }
+        }
+        
+        btnTestSpeech.setOnClickListener {
+            if (!isServiceRunning) {
+                Toast.makeText(this, "請先啟用服務再進行測試！", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            Toast.makeText(this, "開始測試麥克風與辨識功能，請說話...", Toast.LENGTH_SHORT).show()
+            val serviceIntent = Intent(this, CallMonitorService::class.java).apply {
+                putExtra("action_test", true)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
             }
         }
         
