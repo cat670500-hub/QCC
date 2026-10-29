@@ -636,8 +636,19 @@
         // 監聽第一次點擊自動解鎖
         document.addEventListener('click', enableSpeechSession, { once: true });
 
-        // 檢查病患是否符合過濾設定
+        // 檢查病患是否符合過濾設定 (過濾 test / 測試 病患)
         function isPatientAllowed(p) {
+            if (!p) return false;
+            const name = String(p.name || '').toLowerCase();
+            const rec = String(p.record_no || '').toLowerCase();
+            const bed = String(p.bed || '').toLowerCase();
+            const exam = String(p.exam || '').toLowerCase();
+            if (name.includes('test') || name.includes('測試') ||
+                rec.includes('test') || rec.includes('測試') ||
+                bed.includes('test') || bed.includes('測試') ||
+                exam.includes('test') || exam.includes('測試')) {
+                return false;
+            }
             return true;
         }
         
@@ -850,7 +861,7 @@
                 
                 let badgeText = '';
                 if (p.dispatched) {
-                    badgeText = '<span style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📤 已分派</span>';
+                    badgeText = '<span style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📤 檢查完成</span>';
                 } else {
                     badgeText = p.checked_in ? 
                         '<span style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">✅ 已報到</span>' : 
@@ -860,6 +871,11 @@
                 let confirmedBadge = '';
                 if (p.confirmed) {
                     confirmedBadge = '<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">📥 已回覆</span>';
+                }
+
+                let xrayBadge = '';
+                if (p.eporter_task && p.eporter_task.is_xray_urgent && !String(p.eporter_task.status || '').includes('取消')) {
+                    xrayBadge = `<span class="xray-urgent-badge" style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.35); white-space: nowrap;">⚡ 急照X-ray送單 (${p.eporter_task.status})</span>`;
                 }
 
                 let voiceMentionBadge = '';
@@ -875,21 +891,20 @@
                     <div class="card-header">
                         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
                             <div class="exam-title">${p.exam}</div>
-                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${voiceMentionBadge}${badgeText}${confirmedBadge}</div>
+                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${badgeText}${xrayBadge}${voiceMentionBadge}${confirmedBadge}</div>
                         </div>
                         <div class="${bedBadgeClass}">${bedDisplay}</div>
                     </div>
                     <div class="patient-info">
-                        <span>姓名: <strong>${p.name}</strong></span>
-                        <span>病歷號: <strong>${p.record_no}</strong></span>
-                        <span>來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
+                        <span style="white-space: nowrap;">姓名: <strong>${p.name}</strong> (${p.record_no})</span>
+                        <span style="white-space: nowrap;">來源: <strong>${p.source || '未知'}</strong> | 申請單號: <strong>${appNo}</strong></span>
                         ${p.voice_mentioned ? `<span class="voice-mentioned-notice" style="font-size: 0.85rem; color: #eab308; font-weight: bold; margin-top: 4px; animation: flash-text 1.5s infinite alternate;">⚠️ 來電語音提到此病患，請確認是否報到</span>` : ''}
                         ${p.local_dispatched && p.dispatch_time ? `<span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 4px;">📢 已於 ${p.dispatch_time} 發送通知</span>` : ''}
                         ${p.confirmed ? `<span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold; margin-top: 4px;">✅ 接收端已回覆接受</span>` : ''}
                     </div>
                     <div class="action-container" style="display: flex; gap: 10px; width: 100%;">
                         ${p.dispatched ? 
-                            `<div style="color: #8b5a2b; font-weight: 700; width:100%; text-align:center;">已分派完成</div>` : 
+                            `<div style="color: #8b5a2b; font-weight: 700; width:100%; text-align:center;">檢查完成</div>` : 
                             `
                             ${p.checked_in ? 
                                 `<button class="btn" style="background: var(--danger); color: white;" onclick="manualCheckIn('${p.record_no}', '${p.exam}', '${p.accession_no || ''}', '${p.order_no || ''}', false)">
@@ -973,7 +988,8 @@
                     bed.toLowerCase().includes(query) ||
                     exam.toLowerCase().includes(query) ||
                     accession.toLowerCase().includes(query) ||
-                    order.toLowerCase().includes(query)) {
+                    order.toLowerCase().includes(query) ||
+                    card.innerText.toLowerCase().includes(query)) {
                     card.style.display = ''; // 顯示符合條件的卡片
                 } else {
                     card.style.display = 'none'; // 隱藏不符合的卡片

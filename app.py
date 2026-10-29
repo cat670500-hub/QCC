@@ -444,11 +444,24 @@ def get_voice_logs_list():
     except Exception:
         return []
 
+def is_test_patient(p):
+    """判斷是否為測試病患 (姓名、病歷號、床號或檢查項目含有 test 或 測試，不分大小寫)"""
+    if not p or not isinstance(p, dict):
+        return False
+    name = str(p.get('name') or p.get('PatientName') or '').strip().lower()
+    rec = str(p.get('record_no') or p.get('PatientId') or '').strip().lower()
+    bed = str(p.get('bed') or p.get('BedNo') or '').strip().lower()
+    exam = str(p.get('exam') or p.get('ProcedureName') or '').strip().lower()
+    
+    for val in (name, rec, bed, exam):
+        if 'test' in val or '測試' in val:
+            return True
+    return False
+
 def sort_patients(patients):
-    """排序病患：語音提到 (最上端) -> 已報到 (次之) -> 未報到 (中端) -> 已分派 (最下端)。同狀態下依 OrderNo 降序排序。"""
-    # 穩定排序：先依單號降序 (新單在上)
-    patients_by_date = sorted(patients, key=lambda x: x.get('order_no', ''), reverse=True)
-    # 狀態優先級：語音提到 (0) -> 已報到 (1) -> 未報到 (2) -> 已分派 (3)
+    """過濾測試病患並排序：語音提到 (0) -> 已報到 (1) -> 未報到 (2) -> 檢查完成/已分派 (3)。同狀態下依 OrderNo 降序排序。"""
+    valid_patients = [p for p in patients if not is_test_patient(p)]
+    patients_by_date = sorted(valid_patients, key=lambda x: x.get('order_no', ''), reverse=True)
     def get_status_priority(p):
         if p.get('voice_mentioned'):
             return 0
@@ -586,7 +599,8 @@ patients_data = [
 
 @app.route('/sender')
 def sender():
-    return render_template('sender.html', patients=patients_data, custom_message=system_settings.get('custom_message', ''))
+    clean_patients = [p for p in patients_data if not is_test_patient(p)]
+    return render_template('sender.html', patients=clean_patients, custom_message=system_settings.get('custom_message', ''))
 
 @app.route('/receiver')
 def receiver():
@@ -659,7 +673,8 @@ def api_settings():
 
 @app.route('/api/patients')
 def api_patients():
-    return jsonify(patients_data)
+    clean_patients = [p for p in patients_data if not is_test_patient(p)]
+    return jsonify(clean_patients)
 
 @app.route('/api/history')
 def api_history():
@@ -712,6 +727,7 @@ def is_fuzzy_name_match(text, patient_name):
 
 def parse_voice_to_bed(text):
     import re
+    
     if not text:
         return ""
     text_clean = str(text).replace(" ", "").replace("　", "").lower()
@@ -1034,6 +1050,8 @@ def voice_dispatch():
     # 根據需求：急診不用做配對，因此我們在語音配對前，先將急診病患排除
     active_patients = []
     for p in patients_data:
+        if is_test_patient(p):
+            continue
         p_source = str(p.get('source', '')).strip()
         p_bed = str(p.get('bed', '')).strip().lower()
         if p_source == '急診' or 'er' in p_bed or '急診' in p_bed:
@@ -1148,6 +1166,8 @@ def update_patients():
         # 不再過濾已發送病患，改為完整保留並標記狀態
         filtered_data = []
         for p in data:
+            if is_test_patient(p):
+                continue
             record_no = str(p.get('record_no') or '').strip()
             exam = str(p.get('exam') or '').strip()
             # 確保寫入 patients_data 的欄位值是經過標準化（字串化與去除空白）的
@@ -1182,12 +1202,80 @@ def update_patients():
             p['local_dispatched'] = (patient_key in sent_patients)
             p['dispatch_time'] = dispatch_times.get(patient_key, "")
             p['custom_message'] = dispatch_messages.get(patient_key, "")
+            p['eporter_task'] = p.get('eporter_task')
             filtered_data.append(p)
                 
         patients_data = sort_patients(filtered_data)
         socketio.emit('patients_updated', patients_data)
         return jsonify({"status": "success", "count": len(patients_data)})
     return jsonify({"status": "error"}), 400
+
+@app.route('/api/eporter_tasks', methods=['GET'])
+def get_eporter_tasks():
+    try:
+        from eporter_client import EPorterClient
+        client = EPorterClient()
+        tasks = client.get_running_tasks()
+        return jsonify({"status": "success", "count": len(tasks), "tasks": tasks})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/sync_eporter', methods=['POST'])
+def sync_eporter_now():
+    global patients_data
+    try:
+        from eporter_client import EPorterClient
+        client = EPorterClient()
+        all_ep_tasks = client.get_all_eporter_tasks()
+        matched_count = 0
+        xray_count = 0
+        def normalize_str(s):
+            if not s:
+                return ''
+            return re.sub(r'[\s\-_]', '', str(s)).upper()
+
+        for p in patients_data:
+            p_rec = str(p.get('record_no') or '').strip().lstrip('0')
+            p_name = str(p.get('name') or '').strip()
+            p_bed_norm = normalize_str(p.get('bed') or '')
+            patient_tasks = []
+            for t in all_ep_tasks:
+                t_rec = str(t.get('chart_no') or '').strip().lstrip('0')
+                t_name = str(t.get('patient_name') or '').strip()
+                t_bed_norm = normalize_str(t.get('bed_no') or '')
+                
+                matched = False
+                if t_rec and p_rec and t_rec == p_rec:
+                    matched = True
+                elif t_name and p_name and (t_name == p_name or t_name in p_name or p_name in t_name):
+                    matched = True
+                elif t_bed_norm and p_bed_norm and len(t_bed_norm) >= 3 and t_bed_norm == p_bed_norm:
+                    matched = True
+
+                if matched:
+                    patient_tasks.append(t)
+            if patient_tasks:
+                active_urgent_xray = [
+                    t for t in patient_tasks 
+                    if t.get('is_xray_urgent') 
+                    and t.get('icon') not in ['U5.gif', 'nursecancel.png'] 
+                    and '取消' not in str(t.get('status', ''))
+                ]
+                if active_urgent_xray:
+                    status_prio = {'U3.gif': 1, 'U2.gif': 2, 'U1.gif': 3, 'U4.gif': 4}
+                    active_urgent_xray.sort(key=lambda x: status_prio.get(x.get('icon'), 99))
+                    p['eporter_task'] = active_urgent_xray[0]
+                    xray_count += 1
+                    matched_count += 1
+                else:
+                    p['eporter_task'] = None
+            else:
+                p['eporter_task'] = None
+        patients_data = sort_patients(patients_data)
+        socketio.emit('patients_updated', patients_data)
+        return jsonify({"status": "success", "tasks_count": len(all_ep_tasks), "matched_count": matched_count, "xray_count": xray_count})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/sync_errors', methods=['GET'])
 def get_sync_errors():
@@ -1534,7 +1622,107 @@ def handle_cancel_check_in(data):
     # 廣播給所有發送端更新畫面
     socketio.emit('patients_updated', patients_data)
 
+# 自動偵測本機真實 IP 並確保存在符合該 IP 的 SSL 憑證 (支援移植至任何新電腦自動適配)
+def ensure_ssl_certificates():
+    target_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+    cert_file = os.path.join(target_dir, 'cert.pem')
+    key_file = os.path.join(target_dir, 'key.pem')
+
+    # 1. 取得本機所有有效區網 IP
+    detected_ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        detected_ips.add(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not ip.startswith("127.") and ":" not in ip:
+                detected_ips.add(ip)
+    except Exception:
+        pass
+
+    # 2. 檢查現有憑證是否已涵蓋偵測到的區網 IP
+    need_regenerate = True
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        try:
+            from cryptography import x509
+            with open(cert_file, 'rb') as f:
+                cert_data = x509.load_pem_x509_certificate(f.read())
+            san_ext = cert_data.extensions.get_extension_for_oid(x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+            san_ips = [str(ip) for ip in san_ext.value.get_values_for_type(x509.IPAddress)]
+            # 若偵測到的所有 IP 都已經在現有憑證中，則直接重用現有憑證
+            if detected_ips and all(ip in san_ips for ip in detected_ips):
+                need_regenerate = False
+            elif not detected_ips and "127.0.0.1" in san_ips:
+                need_regenerate = False
+        except Exception:
+            need_regenerate = True
+
+    # 3. 若無憑證或電腦 IP 有所異動，自動生成新憑證
+    if need_regenerate:
+        try:
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            import ipaddress
+            import datetime
+
+            primary_ip = list(detected_ips)[0] if detected_ips else "127.0.0.1"
+            print(f"[系統] 偵測到本機區網 IP 為: {primary_ip} (偵測清單: {list(detected_ips)})，正在自動生成專屬 SSL 憑證...")
+
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "TW"),
+                x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Taipei"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Portable"),
+                x509.NameAttribute(NameOID.COMMON_NAME, primary_ip),
+            ])
+
+            san_items = [
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            ]
+            for ip_str in detected_ips:
+                try:
+                    san_items.append(x509.IPAddress(ipaddress.IPv4Address(ip_str)))
+                except Exception:
+                    pass
+
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1))
+                .not_valid_after(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650))
+                .add_extension(x509.SubjectAlternativeName(san_items), critical=False)
+                .sign(key, hashes.SHA256())
+            )
+
+            with open(key_file, "wb") as f:
+                f.write(key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ))
+            with open(cert_file, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+            print(f"[系統] 成功建立 SSL 憑證！已將 IP: {list(detected_ips)} 與 localhost/127.0.0.1 寫入安全識別名冊。")
+        except Exception as gen_err:
+            print(f"[系統警告] 自動建立 SSL 憑證失敗: {gen_err}")
+
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        return cert_file, key_file
+    return None, None
+
 if __name__ == '__main__':
+    ssl_cert, ssl_key = ensure_ssl_certificates()
     # 確保在 Flask debug 模式的 reloader 下不會重複啟動
     if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         print("=> 正在準備啟動系統...")
@@ -1568,14 +1756,14 @@ if __name__ == '__main__':
                 print(f"[系統警告] 無法自動釋放佔用的連接埠: {e}")
 
         kill_port_owner(5000)
-        
+
         # 使用 Thread 啟動爬蟲，避免 PyInstaller subprocess 產生 fork bomb
         from scraper import run_scraper
         def background_scraper():
             time.sleep(3) # 等待 Flask 啟動
             try:
                 # 若啟用 SSL，動態修改爬蟲的對接 API URL 為 HTTPS 模式
-                if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+                if ssl_cert and ssl_key:
                     os.environ["FLASK_API_URL"] = "https://127.0.0.1:5000/api/update_patients"
                 run_scraper()
             except Exception as e:
@@ -1586,7 +1774,7 @@ if __name__ == '__main__':
         # 自動開啟網頁
         def open_browser():
             time.sleep(4)
-            proto = 'https' if (os.path.exists('cert.pem') and os.path.exists('key.pem')) else 'http'
+            proto = 'https' if (ssl_cert and ssl_key) else 'http'
             webbrowser.open(f"{proto}://127.0.0.1:5000/")
         threading.Thread(target=open_browser, daemon=True).start()
 
@@ -1628,9 +1816,7 @@ if __name__ == '__main__':
     # 在正式打包環境中，關閉 debug 模式會更穩定
     is_debug = False
     
-    ssl_cert = 'cert.pem'
-    ssl_key = 'key.pem'
-    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+    if ssl_cert and ssl_key:
         print(f"[系統] 偵測到 SSL 憑證，將以安全連線 (HTTPS) 模式啟動主伺服器！")
         if has_gevent:
             # gevent 需要傳入 ssl.SSLContext 物件而非路徑元組

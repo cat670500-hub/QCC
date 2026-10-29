@@ -19,13 +19,13 @@ body {
     background: var(--glass);
     backdrop-filter: blur(10px);
     border-radius: 20px;
-    padding: 2rem;
+    padding: 1.5rem 2rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
     text-align: center;
-    width: 90%;
-    max-width: 1200px;
-    max-height: 90vh;
+    width: 96%;
+    max-width: 1750px;
+    max-height: 92vh;
     overflow: auto;
     resize: both;
 }
@@ -94,6 +94,21 @@ button:disabled {
     border-left: 5px solid #7dd3fc;
     background: #e0f2fe;
     color: #0369a1;
+}
+
+/* --- 急照X-ray專屬紫色方框提醒徽章樣式 (如使用者截圖) --- */
+.xray-urgent-badge {
+    background: #8b5cf6;
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.35);
+    white-space: nowrap;
 }
 
 /* --- 新增病患狀態卡片樣式 --- */
@@ -256,5 +271,11 @@ button:disabled {
 .er-card {
     background-color: #fef2f2 !important;
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08) !important;
+}
+
+@media (max-width: 800px) {
+    #patientListDiv {
+        grid-template-columns: 1fr !important;
+    }
 }
 

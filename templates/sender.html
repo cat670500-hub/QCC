@@ -66,46 +66,53 @@
             </div>
             
             <!-- 搜尋輸入框 -->
-            <div style="margin-bottom: 18px; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 500px;">
-                <span style="font-size: 0.95rem; font-weight: bold; color: #475569; white-space: nowrap;">🔍 快速篩選：</span>
-                <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入病歷號、姓名或申請單號進行快速搜尋..." style="flex-grow: 1; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); background: rgba(255,255,255,0.7); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; outline: none; transition: all 0.3s ease; width: 100%;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59, 130, 246, 0.15)';" onblur="this.style.borderColor='rgba(0,0,0,0.12)'; this.style.boxShadow='none';">
+            <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 280px; max-width: 480px;">
+                    <span style="font-size: 0.95rem; font-weight: bold; color: #475569; white-space: nowrap;">🔍 快速搜尋：</span>
+                    <input type="text" id="searchInput" oninput="filterPatients()" placeholder="請輸入病歷號、姓名、床號、申請單號或『急照』..." style="flex-grow: 1; padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); background: rgba(255,255,255,0.7); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); font-size: 0.9rem; outline: none; transition: all 0.3s ease; width: 100%;" onfocus="this.style.borderColor='#8b5cf6'; this.style.boxShadow='0 0 0 3px rgba(139, 92, 246, 0.15)';" onblur="this.style.borderColor='rgba(0,0,0,0.12)'; this.style.boxShadow='none';">
+                </div>
             </div>
             
-            <div id="patientListDiv" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; max-height: 480px; overflow-y: auto; padding: 10px;">
+            <div id="patientListDiv" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; max-height: 520px; overflow-y: auto; padding: 10px;">
                 {% for p in patients %}
+                {% if not ('test' in (p.name|lower) or '測試' in p.name or 'test' in (p.record_no|lower) or 'test' in (p.bed|lower) or '測試' in p.bed or 'test' in (p.exam|lower) or '測試' in p.exam) %}
+                {% set is_xray = (p.eporter_task and p.eporter_task.is_xray_urgent and '取消' not in p.eporter_task.status) %}
                 {% set status_class = 'status-voice-mentioned' if p.voice_mentioned else ('status-dispatched' if p.dispatched else ('status-checked-in' if p.checked_in else 'status-unchecked-in')) %}
                 {% set er_class = ' er-card' if p.source == '急診' else '' %}
                 {% set app_no = p.accession_no[:-5] if p.accession_no and p.accession_no|length > 5 else p.order_no %}
-                <div class="request-box {{ status_class }}{{ er_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
+                <div class="request-box {{ status_class }}{{ er_class }}" data-record="{{ p.record_no }}" data-name="{{ p.name }}" data-accession="{{ p.accession_no }}" data-order="{{ p.order_no }}" data-xray-urgent="{{ 'true' if is_xray else 'false' }}" style="margin: 0; flex-direction: column; align-items: flex-start; transition: all 0.3s ease;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
                         <span>
-                            <strong>病患: {{ p.name }} ({{ p.record_no }})</strong><br>
+                            <strong style="white-space: nowrap; font-size: 0.95rem; display: inline-block;">病患: {{ p.name }} ({{ p.record_no }})</strong><br>
                             檢查部位: {{ p.exam }}<br>
-                            床號: {% if p.source == '急診' or p.bed == '急診' %}<span style="color: red; font-weight: bold;">急診</span>{% else %}{{ p.bed }}{% endif %}<br>
-                            <span style="font-size: 0.85rem; color: #64748b;">來源: {{ p.source }} | 申請單號: {{ app_no }}</span>
-                            {% if p.local_dispatched and p.dispatch_time %}
-                            <br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 {{ p.dispatch_time }} 發送通知</span>
-                            {% endif %}
-                            {% if p.confirmed %}
-                            <br><span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold;">✅ 接收端已回覆接受</span>
-                            {% endif %}
+                            床號: {% if p.source == '急診' or p.bed == '急診' %}<span style="color: red; font-weight: bold;">急診</span>{% else %}{{ p.bed }}{% endif %}
                         </span>
-                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
-                            {% if p.voice_mentioned %}
-                                <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="點擊清除語音標記" onclick="socket.emit('clear_voice_mention', { record_no: '{{ p.record_no }}', exam: '{{ p.exam }}', accession_no: '{{ p.accession_no or "" }}', order_no: '{{ p.order_no or "" }}' })">{{ p.voice_alert or '📞 語音來電中' }} ✕</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; margin-left: 8px;">
+                            {% if is_xray %}
+                                <span class="xray-urgent-badge" style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 8px; font-size: 0.82rem; font-weight: bold; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.35);">⚡ 急照X-ray送單 ({{ p.eporter_task.status }})</span>
                             {% endif %}
                             {% if p.dispatched %}
-                                <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 已分派</span>
+                                <span class="checked-in-badge" style="background: rgba(139, 90, 43, 0.15); color: #8b5a2b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📤 檢查完成</span>
                             {% elif p.checked_in %}
                                 <span class="checked-in-badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">✅ 已報到</span>
                             {% else %}
                                 <span class="checked-in-badge" style="background: rgba(148, 163, 184, 0.15); color: #64748b; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">🔘 未報到</span>
+                            {% endif %}
+                            {% if p.voice_mentioned %}
+                                <span class="voice-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="點擊清除語音標記" onclick="socket.emit('clear_voice_mention', { record_no: '{{ p.record_no }}', exam: '{{ p.exam }}', accession_no: '{{ p.accession_no or "" }}', order_no: '{{ p.order_no or "" }}' })">{{ p.voice_alert or '📞 語音來電中' }} ✕</span>
                             {% endif %}
                             {% if p.confirmed %}
                                 <span class="confirmed-badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: flex; align-items: center; gap: 4px;">📥 已回覆</span>
                             {% endif %}
                         </div>
                     </div>
+                    <div style="font-size: 0.85rem; color: #64748b; margin-top: 4px; width: 100%; white-space: nowrap;">來源: {{ p.source }} | 申請單號: {{ app_no }}</div>
+                    {% if p.local_dispatched and p.dispatch_time %}
+                    <div class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 2px;">📢 已於 {{ p.dispatch_time }} 發送通知</div>
+                    {% endif %}
+                    {% if p.confirmed %}
+                    <div class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold; margin-top: 2px;">✅ 接收端已回覆接受</div>
+                    {% endif %}
                     {% if not p.dispatched %}
                     <div style="display: flex; gap: 8px; margin-top: 10px; width: 100%;">
                         {% if p.checked_in %}
@@ -117,6 +124,7 @@
                     </div>
                     {% endif %}
                 </div>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -493,8 +501,23 @@
             historyList.scrollTop = historyList.scrollHeight;
         });
 
+        function isTestPatient(p) {
+            if (!p) return false;
+            const name = String(p.name || '').toLowerCase();
+            const rec = String(p.record_no || '').toLowerCase();
+            const bed = String(p.bed || '').toLowerCase();
+            const exam = String(p.exam || '').toLowerCase();
+            return name.includes('test') || name.includes('測試') ||
+                   rec.includes('test') || rec.includes('測試') ||
+                   bed.includes('test') || bed.includes('測試') ||
+                   exam.includes('test') || exam.includes('測試');
+        }
+
         // 渲染單個病患卡片的 DOM 結構
         function renderPatientCard(p) {
+            if (isTestPatient(p)) {
+                return null;
+            }
             const reqDiv = document.createElement('div');
             reqDiv.style.margin = '0';
             reqDiv.style.flexDirection = 'column';
@@ -507,7 +530,10 @@
             reqDiv.setAttribute('data-accession', p.accession_no || '');
             reqDiv.setAttribute('data-order', p.order_no || '');
             
-            // 決定狀態樣式與背景顏色
+            const isXray = (p.eporter_task && p.eporter_task.is_xray_urgent && !String(p.eporter_task.status || '').includes('取消'));
+            reqDiv.setAttribute('data-xray-urgent', isXray ? 'true' : 'false');
+            
+            // 決定狀態樣式與背景顏色 (完全維持原本狀態)
             let statusClass = 'request-box';
             if (p.voice_mentioned) {
                 statusClass += ' status-voice-mentioned';
@@ -523,39 +549,75 @@
             }
             reqDiv.className = statusClass;
             
+            // 申請單號去尾 5 碼邏輯
+            const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
+
             const headerDiv = document.createElement('div');
             headerDiv.style.display = 'flex';
             headerDiv.style.justifyContent = 'space-between';
             headerDiv.style.alignItems = 'flex-start';
             headerDiv.style.width = '100%';
-            
-            const textSpan = document.createElement('span');
-            const bedDisplay = (p.source === '急診' || p.bed === '急診') ? `<span style="color: red; font-weight: bold;">急診</span>` : p.bed;
-            
-            // 申請單號去尾 5 碼邏輯
-            const appNo = p.accession_no && p.accession_no.length > 5 ? p.accession_no.slice(0, -5) : (p.order_no || '無');
-            
-            let localDispatchText = "";
-            if (p.local_dispatched && p.dispatch_time) {
-                localDispatchText = `<br><span class="dispatch-notice" style="font-size: 0.85rem; color: #10b981; font-weight: bold;">📢 已於 ${p.dispatch_time} 發送通知</span>`;
-            }
-            
-            let confirmedText = "";
-            if (p.confirmed) {
-                confirmedText = `<br><span class="confirmed-notice" style="font-size: 0.85rem; color: #3b82f6; font-weight: bold;">✅ 接收端已回覆接受</span>`;
-            }
 
-            textSpan.innerHTML = `<strong>病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}<br><span style="font-size: 0.85rem; color: #64748b;">來源: ${p.source || '未知'} | 申請單號: ${appNo}</span>${localDispatchText}${confirmedText}`;
+            const bedDisplay = (p.source === '急診' || p.bed === '急診') ? `<span style="color: red; font-weight: bold;">急診</span>` : p.bed;
+            const textSpan = document.createElement('span');
+            textSpan.innerHTML = `<strong style="white-space: nowrap; font-size: 0.95rem; display: inline-block;">病患: ${p.name} (${p.record_no})</strong><br>檢查部位: ${p.exam}<br>床號: ${bedDisplay}`;
             headerDiv.appendChild(textSpan);
-            
+
             // 右側狀態與回覆徽章容器
             const badgeContainer = document.createElement('div');
             badgeContainer.style.display = 'flex';
             badgeContainer.style.flexDirection = 'column';
             badgeContainer.style.alignItems = 'flex-end';
             badgeContainer.style.gap = '5px';
+            badgeContainer.style.flexShrink = '0';
+            badgeContainer.style.marginLeft = '8px';
+
+            // 1. 急照X-ray方框提醒徽章 (置頂於最右上角)
+            if (isXray && p.eporter_task) {
+                const epBadge = document.createElement('span');
+                epBadge.className = 'xray-urgent-badge';
+                epBadge.style.background = '#8b5cf6';
+                epBadge.style.color = 'white';
+                epBadge.style.padding = '4px 10px';
+                epBadge.style.borderRadius = '8px';
+                epBadge.style.fontSize = '0.82rem';
+                epBadge.style.fontWeight = 'bold';
+                epBadge.style.display = 'flex';
+                epBadge.style.alignItems = 'center';
+                epBadge.style.gap = '4px';
+                epBadge.style.boxShadow = '0 2px 6px rgba(139, 92, 246, 0.35)';
+                epBadge.title = `工單: ${p.eporter_task.task_id} (${p.eporter_task.from_loc} ➔ ${p.eporter_task.to_loc})`;
+                epBadge.innerText = `⚡ 急照X-ray送單 (${p.eporter_task.status})`;
+                badgeContainer.appendChild(epBadge);
+            }
+
+            // 2. 狀態徽章 (排在急照下方)
+            const badge = document.createElement('span');
+            badge.className = 'checked-in-badge';
+            badge.style.padding = '4px 8px';
+            badge.style.borderRadius = '6px';
+            badge.style.fontSize = '0.8rem';
+            badge.style.fontWeight = 'bold';
+            badge.style.display = 'flex';
+            badge.style.alignItems = 'center';
+            badge.style.gap = '4px';
             
-            // 語音提到徽章
+            if (p.dispatched) {
+                badge.style.background = 'rgba(139, 90, 43, 0.15)';
+                badge.style.color = '#8b5a2b';
+                badge.innerText = '📤 檢查完成';
+            } else if (p.checked_in) {
+                badge.style.background = 'rgba(59, 130, 246, 0.15)';
+                badge.style.color = '#3b82f6';
+                badge.innerText = '✅ 已報到';
+            } else {
+                badge.style.background = 'rgba(148, 163, 184, 0.15)';
+                badge.style.color = '#64748b';
+                badge.innerText = '🔘 未報到';
+            }
+            badgeContainer.appendChild(badge);
+
+            // 3. 語音提到徽章
             if (p.voice_mentioned) {
                 const voiceBadge = document.createElement('span');
                 voiceBadge.style.background = 'rgba(234, 179, 8, 0.15)';
@@ -581,34 +643,8 @@
                 };
                 badgeContainer.appendChild(voiceBadge);
             }
-            
-            // 狀態徽章
-            const badge = document.createElement('span');
-            badge.className = 'checked-in-badge';
-            badge.style.padding = '4px 8px';
-            badge.style.borderRadius = '6px';
-            badge.style.fontSize = '0.8rem';
-            badge.style.fontWeight = 'bold';
-            badge.style.display = 'flex';
-            badge.style.alignItems = 'center';
-            badge.style.gap = '4px';
-            
-            if (p.dispatched) {
-                badge.style.background = 'rgba(139, 90, 43, 0.15)';
-                badge.style.color = '#8b5a2b';
-                badge.innerText = '📤 已分派';
-            } else if (p.checked_in) {
-                badge.style.background = 'rgba(59, 130, 246, 0.15)';
-                badge.style.color = '#3b82f6';
-                badge.innerText = '✅ 已報到';
-            } else {
-                badge.style.background = 'rgba(148, 163, 184, 0.15)';
-                badge.style.color = '#64748b';
-                badge.innerText = '🔘 未報到';
-            }
-            badgeContainer.appendChild(badge);
 
-            // 確認/回覆徽章
+            // 4. 確認/回覆徽章
             if (p.confirmed) {
                 const confirmedBadge = document.createElement('span');
                 confirmedBadge.className = 'confirmed-badge';
@@ -627,6 +663,38 @@
             
             headerDiv.appendChild(badgeContainer);
             reqDiv.appendChild(headerDiv);
+            
+            // 來源與申請單號 (獨立一列滿版，避免與右側徽章擠壓折行)
+            const metaDiv = document.createElement('div');
+            metaDiv.style.fontSize = '0.85rem';
+            metaDiv.style.color = '#64748b';
+            metaDiv.style.marginTop = '4px';
+            metaDiv.style.width = '100%';
+            metaDiv.style.whiteSpace = 'nowrap';
+            metaDiv.innerText = `來源: ${p.source || '未知'} | 申請單號: ${appNo}`;
+            reqDiv.appendChild(metaDiv);
+
+            if (p.local_dispatched && p.dispatch_time) {
+                const dispatchDiv = document.createElement('div');
+                dispatchDiv.className = 'dispatch-notice';
+                dispatchDiv.style.fontSize = '0.85rem';
+                dispatchDiv.style.color = '#10b981';
+                dispatchDiv.style.fontWeight = 'bold';
+                dispatchDiv.style.marginTop = '2px';
+                dispatchDiv.innerText = `📢 已於 ${p.dispatch_time} 發送通知`;
+                reqDiv.appendChild(dispatchDiv);
+            }
+
+            if (p.confirmed) {
+                const confirmedDiv = document.createElement('div');
+                confirmedDiv.className = 'confirmed-notice';
+                confirmedDiv.style.fontSize = '0.85rem';
+                confirmedDiv.style.color = '#3b82f6';
+                confirmedDiv.style.fontWeight = 'bold';
+                confirmedDiv.style.marginTop = '2px';
+                confirmedDiv.innerText = `✅ 接收端已回覆接受`;
+                reqDiv.appendChild(confirmedDiv);
+            }
             
             // 檢查是否有同步失敗的錯誤訊息
             const syncError = checkInErrors[p.accession_no];
@@ -751,7 +819,8 @@
             const listDiv = document.getElementById('patientListDiv');
             listDiv.innerHTML = ''; // 清除舊清單
             data.forEach(p => {
-                listDiv.appendChild(renderPatientCard(p));
+                const card = renderPatientCard(p);
+                if (card) listDiv.appendChild(card);
             });
             filterPatients(); // 重新套用快速搜尋過濾
             console.log("已接收最新病患名單，畫面已同步更新！");
@@ -766,7 +835,8 @@
             const listDiv = document.getElementById('patientListDiv');
             listDiv.innerHTML = '';
             currentPatients.forEach(p => {
-                listDiv.appendChild(renderPatientCard(p));
+                const card = renderPatientCard(p);
+                if (card) listDiv.appendChild(card);
             });
             filterPatients();
             // 重新載入同步失敗日誌與本機錯誤日誌
@@ -785,7 +855,8 @@
                     const listDiv = document.getElementById('patientListDiv');
                     listDiv.innerHTML = ''; // 清除舊清單
                     data.forEach(p => {
-                        listDiv.appendChild(renderPatientCard(p));
+                        const card = renderPatientCard(p);
+                        if (card) listDiv.appendChild(card);
                     });
                     filterPatients(); // 重新套用快速搜尋過濾
                 })
@@ -793,10 +864,12 @@
         }
 
         function manualRefresh() {
-            fetchPatients();
+            fetch('/api/sync_eporter', { method: 'POST' }).finally(() => {
+                fetchPatients();
+            });
             const btn = document.getElementById('refreshBtn');
             if (btn) {
-                btn.innerText = '✅ 已手動更新！';
+                btn.innerText = '✅ 已更新 (含ePorter)！';
                 btn.disabled = true;
                 setTimeout(() => {
                     btn.innerText = '🔄 重新查詢';
@@ -1011,25 +1084,41 @@
             }
         }
 
-        // 快速篩選病歷號、姓名與申請單號
+        // 快速篩選病歷號、姓名、床號、申請單號或急照關鍵字
         function filterPatients() {
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
             const cards = document.querySelectorAll('#patientListDiv .request-box');
             
             cards.forEach(card => {
-                const recordNo = card.getAttribute('data-record') || '';
-                const name = card.getAttribute('data-name') || '';
-                const accession = card.getAttribute('data-accession') || '';
-                const order = card.getAttribute('data-order') || '';
-                
-                // 比對病歷號 (Patient ID)、姓名或申請單號 (AccessionNo / OrderNo)
-                if (recordNo.toLowerCase().includes(query) || 
-                    name.toLowerCase().includes(query) || 
-                    accession.toLowerCase().includes(query) || 
-                    order.toLowerCase().includes(query)) {
-                    card.style.display = ''; // 顯示符合條件的卡片
+                if (!query) {
+                    card.style.display = '';
+                    return;
+                }
+                const recordNo = (card.getAttribute('data-record') || '').toLowerCase();
+                const name = (card.getAttribute('data-name') || '').toLowerCase();
+                const accession = (card.getAttribute('data-accession') || '').toLowerCase();
+                const order = (card.getAttribute('data-order') || '').toLowerCase();
+                const isXray = card.getAttribute('data-xray-urgent') === 'true';
+                const cardText = card.innerText.toLowerCase();
+
+                const isXraySearch = ['急照', 'xray', 'x-ray', '送單', '急診x光', '攝影室'].some(kw => query.includes(kw));
+                let matchQuery = false;
+                if (isXraySearch && isXray) {
+                    matchQuery = true;
                 } else {
-                    card.style.display = 'none'; // 隱藏不符合的卡片
+                    matchQuery = (
+                        recordNo.includes(query) || 
+                        name.includes(query) || 
+                        accession.includes(query) || 
+                        order.includes(query) ||
+                        cardText.includes(query)
+                    );
+                }
+
+                if (matchQuery) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
                 }
             });
         }

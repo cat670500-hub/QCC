@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import json
 import time
 import datetime
@@ -13,6 +14,10 @@ FLASK_API_URL = os.environ.get("FLASK_API_URL", "http://127.0.0.1:5000/api/updat
 
 # 初始化 Socket.IO 客戶端 (關閉 SSL 驗證防內部網路憑證問題)
 sio = socketio.Client(ssl_verify=False)
+
+# 整合 ePorter 系統連線客戶端
+from eporter_client import EPorterClient
+eporter_client = EPorterClient()
 
 @sio.event
 def connect():
@@ -282,17 +287,33 @@ def fetch_live_patients(token):
             raise e
         raise ConnectionError(f"實時 API 連線異常: {e}")
 
+def is_test_item(item):
+    """判斷是否為測試資料 (包含 test 或 測試 等關鍵字，不分大小寫)"""
+    if not item or not isinstance(item, dict):
+        return False
+    name = str(item.get('PatientName') or item.get('name') or '').strip().lower()
+    pid = str(item.get('PatientId') or item.get('record_no') or '').strip().lower()
+    bed = str(item.get('BedNo') or item.get('bed') or '').strip().lower()
+    proc = str(item.get('ProcedureName') or item.get('exam') or '').strip().lower()
+    for val in (name, pid, bed, proc):
+        if 'test' in val or '測試' in val:
+            return True
+    return False
+
 def parse_patients(raw_items):
     """解析病患清單，並依『醫令名稱符合 Chest(AP)Portable』、『床號為重症病房』以及『同住院病患之其它 CR 檢查』做篩選"""
     extracted_patients = []
     seen_keys = set()
     
-    # 僅撈取以下活躍狀態的病患 (11:尚未排檢, 12:預約登記, 21:櫃台報到, 56:自動分派/已分派, Hold:暫卡)
-    active_statuses = ['11', '12', '21', '56', 'Hold']
+    # 撈取未完成與已完成檢查之活躍狀態 (11:尚未排檢, 12:預約登記, 21:櫃台報到, 56:自動分派/已照完/檢查完成, 51:報告中, 71:完成報告, Hold:暫卡)
+    active_statuses = ['11', '12', '21', '56', '51', '71', 'Hold']
     
     # 1. 先收集「今天有 Portable 檢查」的住院病患病歷號
     portable_patient_ids = set()
     for item in raw_items:
+        # 排除測試病患 (如 test103, test11, 測試等)
+        if is_test_item(item):
+            continue
         modality = str(item.get('Modality', '')).upper().strip()
         if modality in ['CT', 'MR', 'MRI']:
             continue
@@ -314,6 +335,9 @@ def parse_patients(raw_items):
                 
     # 2. 第二次掃描，進行篩選與建構名單
     for item in raw_items:
+        # 排除測試病患 (如 test103, test11, 測試等)
+        if is_test_item(item):
+            continue
         # 去掉儀器類別為 CT 或 MR/MRI 的病患
         modality = str(item.get('Modality', '')).upper().strip()
         if modality in ['CT', 'MR', 'MRI']:
@@ -377,8 +401,8 @@ def parse_patients(raw_items):
                     "accession_no": accession_no,
                     "order_no": order_no,
                     "checked_in": is_checked_in,
-                    # 如果醫院端狀態為 56 (自動分派/已分派)，則直接標記為已分派 (dispatched)
-                    "dispatched": (status == '56')
+                    # 如果醫院端狀態為 56 (自動分派/已分派/檢查完成)、51 或 71，則直接標記為已完成 (dispatched)
+                    "dispatched": (status in ['56', '51', '71'])
                 })
                 
     return extracted_patients
@@ -436,6 +460,68 @@ def run_scraper():
             # 3. 解析與篩選
             patients = parse_patients(raw_items)
             print(f"[成功] 實時取得成功！共撈取到 {len(patients)} 筆符合條件 (醫令或重症病房) 的今日病患。")
+            
+            # 3.1 實時撈取 ePorter 傳送系統任務並標記在清單中 (急照X-ray送單優先)
+            try:
+                all_ep_tasks = eporter_client.get_all_eporter_tasks()
+                matched_count = 0
+                xray_matched_count = 0
+                def normalize_str(s):
+                    if not s:
+                        return ''
+                    return re.sub(r'[\s\-_]', '', str(s)).upper()
+
+                for p in patients:
+                    if is_test_item(p):
+                        continue
+                    p_rec = str(p.get('record_no') or '').strip().lstrip('0')
+                    p_name = str(p.get('name') or '').strip()
+                    p_bed_norm = normalize_str(p.get('bed') or '')
+                    patient_tasks = []
+                    for t in all_ep_tasks:
+                        t_rec = str(t.get('chart_no') or '').strip().lstrip('0')
+                        t_name = str(t.get('patient_name') or '').strip()
+                        t_bed_norm = normalize_str(t.get('bed_no') or '')
+                        t_task = str(t.get('task_name') or '').strip()
+                        
+                        # 排除測試工單
+                        if any('test' in x.lower() or '測試' in x for x in (t_rec, t_name, t_bed_norm, t_task)):
+                            continue
+                        
+                        matched = False
+                        if t_rec and p_rec and t_rec == p_rec:
+                            matched = True
+                        elif t_name and p_name and (t_name == p_name or t_name in p_name or p_name in t_name):
+                            matched = True
+                        elif t_bed_norm and p_bed_norm and len(t_bed_norm) >= 3 and t_bed_norm == p_bed_norm:
+                            matched = True
+
+                        if matched:
+                            patient_tasks.append(t)
+                    
+                    if patient_tasks:
+                        # 僅排除已取消 (U5.gif, nursecancel) 的任務，完整保留進行中、待派與送單完成/結案之急照工單
+                        active_urgent_xray = [
+                            t for t in patient_tasks 
+                            if t.get('is_xray_urgent') 
+                            and t.get('icon') not in ['U5.gif', 'nursecancel.png'] 
+                            and '取消' not in str(t.get('status', ''))
+                        ]
+                        if active_urgent_xray:
+                            status_prio = {'U3.gif': 1, 'U2.gif': 2, 'U1.gif': 3, 'U4.gif': 4}
+                            active_urgent_xray.sort(key=lambda x: status_prio.get(x.get('icon'), 99))
+                            p['eporter_task'] = active_urgent_xray[0]
+                            xray_matched_count += 1
+                            matched_count += 1
+                        else:
+                            p['eporter_task'] = None
+                    else:
+                        p['eporter_task'] = None
+
+                if all_ep_tasks:
+                    print(f"[ePorter] 成功取得 {len(all_ep_tasks)} 筆任務，比對標記 {matched_count} 筆 (其中急照X-ray送單 {xray_matched_count} 筆)！")
+            except Exception as ep_err:
+                print(f"[ePorter警告] 抓取/標記 ePorter 任務時發生非致命異常: {ep_err}")
             
             # 4. 同步至 Flask 主系統
             response = requests.post(FLASK_API_URL, json=patients, verify=False, timeout=5)
