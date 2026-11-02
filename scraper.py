@@ -5,9 +5,43 @@ import json
 import time
 import datetime
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import socketio
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def create_tpris_session():
+    """建立具備自動重試與 Connection: close 的 Session，避免醫院伺服器閒置超時切斷 TCP 連線引發 10054"""
+    s = requests.Session()
+    retries = Retry(
+        total=2,
+        connect=2,
+        read=2,
+        backoff_factor=0.5,
+        status_forcelist=[500, 502, 503, 504],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=5, pool_maxsize=5)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    s.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Connection": "close"  # 關鍵：防止伺服器長連線超時掐斷引發 10054 (WSAECONNRESET)
+    })
+    return s
+
+tpris_session = create_tpris_session()
+
+def reset_tpris_session():
+    """徹底關閉舊連線並重建 TPRIS Session 連線池"""
+    global tpris_session
+    try:
+        tpris_session.close()
+    except Exception:
+        pass
+    tpris_session = create_tpris_session()
+
 
 # Flask 系統的網址
 FLASK_API_URL = os.environ.get("FLASK_API_URL", "http://127.0.0.1:5000/api/update_patients")
@@ -135,26 +169,34 @@ def login_and_get_token(account, password):
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Connection": "close"
     }
     payload = {
         "Name": account,
         "Password": password
     }
     
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        if response.status_code == 200:
-            res_data = response.json()
-            token = res_data.get('token')
-            if token:
-                return token
+    for attempt in range(2):
+        try:
+            response = tpris_session.post(url, headers=headers, json=payload, verify=False, timeout=15)
+            if response.status_code == 200:
+                res_data = response.json()
+                token = res_data.get('token')
+                if token:
+                    return token
+                else:
+                    raise ValueError("登入回傳中無效的 Token 欄位")
             else:
-                raise ValueError("登入回傳中無效的 Token 欄位")
-        else:
-            raise requests.exceptions.HTTPError(f"登入失敗，伺服器回傳狀態碼: {response.status_code}")
-    except Exception as e:
-        raise ConnectionError(f"無法連線登入醫院 TPRIS 系統: {e}")
+                raise requests.exceptions.HTTPError(f"登入失敗，伺服器回傳狀態碼: {response.status_code}")
+        except Exception as e:
+            err_str = str(e)
+            is_conn_error = "10054" in err_str or "Connection reset" in err_str or isinstance(e, (requests.exceptions.ConnectionError, ConnectionResetError))
+            if attempt == 0 and is_conn_error:
+                print(f"[TPRIS] 登入時連線異常/重置 (10054)，正在自動重建連線重試...")
+                reset_tpris_session()
+                time.sleep(1)
+                continue
+            raise ConnectionError(f"無法連線登入醫院 TPRIS 系統: {e}")
 
 def log_local_error(accession_no, action, message):
     try:
@@ -198,7 +240,7 @@ def hospital_check_in(token, accession_no, is_check_in=True):
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         # 關閉 SSL 驗證以防醫院內部網路凭证錯誤
-        response = requests.put(url, headers=headers, json=payload, verify=False, timeout=10)
+        response = tpris_session.put(url, headers=headers, json=payload, verify=False, timeout=15)
         if response.status_code == 200:
             res_json = None
             try:
@@ -274,18 +316,27 @@ def fetch_live_patients(token):
         "orByDefault": "true"
     }
     
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        if response.status_code == 200:
-            return response.json().get('Items', [])
-        elif response.status_code == 401:
-            raise PermissionError("Token 已過期或未授權 (401)")
-        else:
-            raise requests.exceptions.HTTPError(f"獲取病患清單失敗，狀態碼: {response.status_code}")
-    except Exception as e:
-        if isinstance(e, PermissionError):
-            raise e
-        raise ConnectionError(f"實時 API 連線異常: {e}")
+    for attempt in range(2):
+        try:
+            # 提高超時至 25 秒，避免 3000 筆資料量較大時傳輸中斷被遠端關閉 (10054)
+            response = tpris_session.get(url, headers=headers, params=params, verify=False, timeout=25)
+            if response.status_code == 200:
+                return response.json().get('Items', [])
+            elif response.status_code == 401:
+                raise PermissionError("Token 已過期或未授權 (401)")
+            else:
+                raise requests.exceptions.HTTPError(f"獲取病患清單失敗，狀態碼: {response.status_code}")
+        except PermissionError:
+            raise
+        except Exception as e:
+            err_str = str(e)
+            is_conn_error = "10054" in err_str or "Connection reset" in err_str or isinstance(e, (requests.exceptions.ConnectionError, ConnectionResetError))
+            if attempt == 0 and is_conn_error:
+                print(f"[TPRIS] 撈取病患清單時連線中斷 (10054)，正在自動重建連線重試...")
+                reset_tpris_session()
+                time.sleep(1.5)
+                continue
+            raise ConnectionError(f"實時 API 連線異常: {e}")
 
 def is_test_item(item):
     """判斷是否為測試資料 (包含 test 或 測試 等關鍵字，不分大小寫)"""
@@ -559,9 +610,15 @@ def run_scraper():
             token = None
             
         except Exception as e:
-            # 依據使用者需求：若無法連上醫院網路實時取得資料就回報錯誤！
-            print(f"\n[錯誤] 無法連上醫院網路實時取得資料！請確認醫院 VPN 或內網連線是否正常。")
-            print(f"   詳細錯誤資訊: {e}\n")
+            err_str = str(e)
+            if "10054" in err_str or "Connection reset" in err_str:
+                print(f"\n[連線提示] 偵測到醫院網路瞬斷或連線被重置 (10054)，已自動重建連線池，將於下次輪詢自動重連。")
+                reset_tpris_session()
+                eporter_client.reset_session()
+            else:
+                # 依據使用者需求：若無法連上醫院網路實時取得資料就回報錯誤！
+                print(f"\n[錯誤] 無法連上醫院網路實時取得資料！請確認醫院 VPN 或內網連線是否正常。")
+                print(f"   詳細錯誤資訊: {e}\n")
             
         print("等待 10 秒後再次進行實時輪詢...\n" + "-"*40)
         time.sleep(10)

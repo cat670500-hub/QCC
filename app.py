@@ -20,10 +20,17 @@ if not getattr(sys, 'frozen', False):
                 if type is not None and (issubclass(type, ssl.SSLError) or "SSLError" in type.__name__ or "sslv3 alert" in str(value)):
                     # 已靜音自簽憑證未授信之握手錯誤，不輸出任何日誌以避免洗版
                     return
+                # 靜音客戶端關閉分頁、重整或網路瞬斷引發的 10054 (ConnectionResetError)
+                if type is not None and (
+                    issubclass(type, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError))
+                    or "10054" in str(value)
+                    or "ConnectionResetError" in type.__name__
+                ):
+                    return
                 return original_handle_error(self, context, type, value, tb)
                 
             Hub.handle_error = custom_hub_handle_error
-            print("[系統] 已啟用 gevent 全域 SSL 錯誤抑制機制！")
+            print("[系統] 已啟用 gevent 全域 SSL 與 10054 連線重置錯誤抑制機制！")
         except Exception as e:
             print(f"[系統警告] 啟用 gevent 全域 SSL 錯誤抑制失敗: {e}")
             

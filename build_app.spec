@@ -7,7 +7,7 @@ datas = [
     ('static', 'static'),
 ]
 
-for optional_file in ['tprisweb.shh.org.tw.har', 'cert.pem', 'key.pem', '.env']:
+for optional_file in ['tprisweb.shh.org.tw.har', 'cert.pem', 'key.pem', '.env', 'settings.json', 'sms_settings.json']:
     if os.path.exists(optional_file):
         datas.append((optional_file, '.'))
 

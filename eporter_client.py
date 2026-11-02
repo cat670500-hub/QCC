@@ -1,6 +1,9 @@
 import re
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 urllib3.disable_warnings()
 
 STATUS_MAP = {
@@ -17,16 +20,54 @@ class EPorterClient:
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.password = password
-        self.session = requests.Session()
+        self.session = self._create_session()
+        self.logged_in = False
+
+    def _create_session(self):
+        """建立具備自動重試與 Connection: close 的 Session，避免 IIS 閒置超時切斷 TCP 連線引發 10054"""
+        s = requests.Session()
+        retries = Retry(
+            total=2,
+            connect=2,
+            read=2,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504],
+            raise_on_status=False
+        )
+        adapter = HTTPAdapter(max_retries=retries, pool_connections=5, pool_maxsize=5)
+        s.mount("http://", adapter)
+        s.mount("https://", adapter)
+        s.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Connection": "close"  # 關鍵：防止 IIS 伺服器閒置逾時掐斷長連線導致下次請求遇到 10054
+        })
+        return s
+
+    def reset_session(self):
+        """徹底關閉舊連線並重置 Session 與登入狀態"""
+        try:
+            self.session.close()
+        except Exception:
+            pass
+        self.session = self._create_session()
         self.logged_in = False
 
     def login(self):
         login_url = f"{self.base_url}/login.aspx"
         try:
-            r = self.session.get(login_url, timeout=5)
-            viewstate = re.search(r'name="__VIEWSTATE" id="__VIEWSTATE" value="([^"]+)"', r.text).group(1)
-            viewstate_gen = re.search(r'name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="([^"]+)"', r.text).group(1)
-            event_val = re.search(r'name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="([^"]+)"', r.text).group(1)
+            r = self.session.get(login_url, timeout=10)
+            viewstate_match = re.search(r'name="__VIEWSTATE" id="__VIEWSTATE" value="([^"]+)"', r.text)
+            viewstate_gen_match = re.search(r'name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="([^"]+)"', r.text)
+            event_val_match = re.search(r'name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="([^"]+)"', r.text)
+            
+            if not viewstate_match or not viewstate_gen_match or not event_val_match:
+                print(f"[ePorter] 登入頁面解析失敗，無法取得 VIEWSTATE 驗證參數")
+                self.reset_session()
+                return False
+
+            viewstate = viewstate_match.group(1)
+            viewstate_gen = viewstate_gen_match.group(1)
+            event_val = event_val_match.group(1)
 
             login_data = {
                 '__VIEWSTATE': viewstate,
@@ -36,15 +77,15 @@ class EPorterClient:
                 'txtPassword': self.password,
                 'btnLogin': '登入'
             }
-            r_post = self.session.post(login_url, data=login_data, timeout=5)
+            r_post = self.session.post(login_url, data=login_data, timeout=10)
             self.logged_in = True
             return True
         except Exception as e:
             print(f"[ePorter] 登入失敗: {e}")
-            self.logged_in = False
+            self.reset_session()
             return False
 
-    def get_all_eporter_tasks(self):
+    def get_all_eporter_tasks(self, retry_on_error=True):
         """抓取今日所有 ePorter 任務，並識別『急照X-ray送單』與『執行中』等狀態"""
         if not self.logged_in:
             if not self.login():
@@ -63,10 +104,10 @@ class EPorterClient:
             "&straspNRIC=&straspName=&straspFromTime=0000&straspToTime=2359&stremergency="
         )
         try:
-            r = self.session.get(display_url, timeout=10)
+            r = self.session.get(display_url, timeout=15)
             if "login.aspx" in r.url:
                 if self.login():
-                    r = self.session.get(display_url, timeout=10)
+                    r = self.session.get(display_url, timeout=15)
                 else:
                     return []
 
@@ -121,6 +162,12 @@ class EPorterClient:
                 })
             return tasks
         except Exception as e:
+            err_str = str(e)
+            is_reset = "10054" in err_str or "Connection reset" in err_str or isinstance(e, (requests.exceptions.ConnectionError, ConnectionResetError))
+            if retry_on_error and is_reset:
+                print(f"[ePorter] 偵測到連線異常/重置 (10054)，正在自動重建連線並重新登入重試...")
+                self.reset_session()
+                return self.get_all_eporter_tasks(retry_on_error=False)
             print(f"[ePorter] 抓取任務異常: {e}")
             return []
 
